@@ -11,7 +11,7 @@ type Props = {
 };
 
 export function OnboardingScreen({ username, onUsernameChange, onStart, canStart, rpcHealthy }: Props) {
-  const [bannerSrc, setBannerSrc] = useState("/img/fatcats-tab.png");
+  const [bannerSrc, setBannerSrc] = useState("/img/1500x1500.jpg");
 
   return (
     <section className="glass-panel mx-auto flex w-full max-w-xl flex-col gap-6 rounded-3xl p-8">
@@ -20,7 +20,7 @@ export function OnboardingScreen({ username, onUsernameChange, onStart, canStart
           src={bannerSrc}
           alt="FAT CATS banner"
           className="h-auto w-full rounded-xl object-cover"
-          onError={() => setBannerSrc("/img/CAT1.jpg")}
+          onError={() => setBannerSrc("/img/fatcats-tab.png")}
         />
       </div>
 

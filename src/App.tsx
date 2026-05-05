@@ -14,6 +14,7 @@ import { submitDailyCheckInTx, toUtcDay } from "@/lib/solana/dailyCheckIn";
 import { submitScoreTx } from "@/lib/solana/scoreSubmission";
 import { SolanaTxState, checkRpcHealth, classifyTxError, toErrorMessage } from "@/lib/solana/txHelpers";
 import { LeaderboardEntry } from "@/lib/state/leaderboard";
+import { getSoundEngine } from "@/lib/audio/sound";
 import {
   UserProgress,
   fetchLeaderboard,
@@ -84,6 +85,7 @@ type SessionMeta = {
 function AppShell() {
   const { connection } = useConnection();
   const wallet = useWallet();
+  const sound = useMemo(() => getSoundEngine(), []);
 
   const [usernameInput, setUsernameInput] = useState("");
   const [username, setUsername] = useState("");
@@ -119,6 +121,10 @@ function AppShell() {
   const [submitState, setSubmitState] = useState<SolanaTxState>("idle");
   const [lastSignature, setLastSignature] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("fat-cat-sound") !== "off";
+  });
 
   const refreshLeaderboard = async () => {
     if (!hasSupabaseEnv) return;
@@ -129,6 +135,24 @@ function AppShell() {
       setFeedback(toErrorMessage(error));
     }
   };
+
+  useEffect(() => {
+    sound.setEnabled(soundEnabled);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("fat-cat-sound", soundEnabled ? "on" : "off");
+    }
+    if (started && soundEnabled) {
+      sound.startAmbient();
+    } else {
+      sound.stopAmbient();
+    }
+  }, [sound, soundEnabled, started]);
+
+  useEffect(() => {
+    return () => {
+      sound.stopAmbient();
+    };
+  }, [sound]);
 
   useEffect(() => {
     if (!hasSupabaseEnv) {
@@ -197,6 +221,7 @@ function AppShell() {
   };
 
   const startGame = async () => {
+    sound.unlock();
     if (!wallet.publicKey || !canStart) return;
     if (!hasSupabaseEnv) {
       setFeedback("Supabase is required before starting. Configure .env.local and restart.");
@@ -233,12 +258,14 @@ function AppShell() {
       setPendingSwap(null);
       setScorePop(null);
       setFeedback("");
+      sound.playSuccess();
     } catch (error) {
+      sound.playError();
       setFeedback(toErrorMessage(error));
     }
   };
 
-  const resolveMatches = async (initialBoard: number[][]): Promise<{ hadMatch: boolean; gained: number }> => {
+  const resolveMatches = async (initialBoard: number[][]): Promise<{ hadMatch: boolean; gained: number; cascades: number }> => {
     let next = initialBoard;
     let totalMatched = 0;
     let cascadeSteps = 0;
@@ -258,7 +285,7 @@ function AppShell() {
       await delay(105);
     }
 
-    if (totalMatched <= 0) return { hadMatch: false, gained: 0 };
+    if (totalMatched <= 0) return { hadMatch: false, gained: 0, cascades: 0 };
 
     const gained = scoreForMatch(totalMatched, cascadeSteps);
     const popId = Date.now();
@@ -268,11 +295,13 @@ function AppShell() {
       setScorePop((current) => (current && current.id === popId ? null : current));
     }, 900);
 
-    return { hadMatch: true, gained };
+    return { hadMatch: true, gained, cascades: cascadeSteps };
   };
 
   const handleSwap = async (a: Coord, b: Coord) => {
     if (boardLocked) return;
+    sound.unlock();
+    sound.playSwipe();
 
     const original = board;
     const nextMovesLeft = Math.max(0, movesRemaining - 1);
@@ -291,14 +320,20 @@ function AppShell() {
     setIsResolving(true);
 
     try {
-      const { hadMatch, gained } = await resolveMatches(swapped);
+      const { hadMatch, gained, cascades } = await resolveMatches(swapped);
 
       if (!hadMatch) {
         setPendingSwap({ a: b, b: a });
         await delay(130);
         setBoard(original);
         setPendingSwap(null);
+        sound.playError();
       } else {
+        if (cascades > 1) {
+          sound.playCombo(cascades);
+        } else {
+          sound.playMatch();
+        }
         const newTotal = Math.min(score + gained, MAX_SCORE);
         const newLevelScore = levelScore + gained;
         setScore(newTotal);
@@ -309,10 +344,12 @@ function AppShell() {
             setFeedback("Max level reached. Submit your run.");
             setLevelFailed(true);
             setSessionMeta((prev) => ({ ...prev, endedAt: Date.now() }));
+            sound.playSuccess();
           } else {
             const nextLevel = level + 1;
             setFeedback(`Level ${level} cleared. Welcome to level ${nextLevel}.`);
             resetRunForLevel(nextLevel);
+            sound.playSuccess();
           }
         } else {
           setLevelScore(newLevelScore);
@@ -323,6 +360,7 @@ function AppShell() {
         setLevelFailed(true);
         setSessionMeta((prev) => ({ ...prev, endedAt: Date.now() }));
         setFeedback("Level failed. Moves exhausted before target score. Try Again.");
+        sound.playError();
       }
     } finally {
       setIsResolving(false);
@@ -330,6 +368,7 @@ function AppShell() {
   };
 
   const handleTryAgain = () => {
+    sound.unlock();
     const sameLevel = level;
     setScore(0);
     resetRunForLevel(sameLevel);
@@ -340,6 +379,7 @@ function AppShell() {
   };
 
   const handleCheckIn = async () => {
+    sound.unlock();
     if (!wallet.publicKey || !progress || !hasSupabaseEnv) return;
     const walletKey = wallet.publicKey.toBase58();
     const cleanUsername = sanitizeUsername(progress.username || username || usernameInput);
@@ -386,10 +426,12 @@ function AppShell() {
       setCheckInState("success");
       setLastSignature(result.signature);
       setFeedback(`Daily check-in confirmed. +${xpGain} XP`);
+      sound.playSuccess();
       await refreshLeaderboard();
     } catch (error) {
       setCheckInState(classifyTxError(error));
       setFeedback(toErrorMessage(error));
+      sound.playError();
     }
   };
 
@@ -399,6 +441,7 @@ function AppShell() {
   };
 
   const handleScoreSubmit = async () => {
+    sound.unlock();
     if (!wallet.publicKey || !progress || !hasSupabaseEnv) return;
     const walletKey = wallet.publicKey.toBase58();
     const cleanUsername = sanitizeUsername(progress.username || username || usernameInput);
@@ -489,10 +532,12 @@ function AppShell() {
       setSubmitState("success");
       setLastSignature(result.signature);
       setFeedback(`Score submitted on-chain. +${xpFromRun} XP. Manual rewards review only.`);
+      sound.playSuccess();
       await refreshLeaderboard();
     } catch (error) {
       setSubmitState(classifyTxError(error));
       setFeedback(toErrorMessage(error));
+      sound.playError();
     }
   };
 
@@ -511,13 +556,32 @@ function AppShell() {
   }, [progress?.streak]);
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-5 px-3 pb-10 pt-4 sm:px-5 sm:pt-6">
+    <main
+      className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-5 px-3 pb-10 pt-4 sm:px-5 sm:pt-6"
+      onPointerDownCapture={(event) => {
+        const target = event.target as HTMLElement | null;
+        if (!target) return;
+        const button = target.closest("button");
+        if (!button || button.classList.contains("tile-shell")) return;
+        sound.unlock();
+        sound.playClick();
+      }}
+    >
       <header className="glass-panel rounded-3xl p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h1 className="text-3xl font-black text-white">FAT CAT</h1>
           </div>
-          <p className="rounded-full border border-white/35 bg-white/15 px-3 py-1 text-xs text-white">Badge: {badge}</p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSoundEnabled((prev) => !prev)}
+              className="rounded-full border border-white/35 bg-white/15 px-3 py-1 text-xs font-semibold text-white transition hover:bg-white/25"
+            >
+              Sound: {soundEnabled ? "On" : "Off"}
+            </button>
+            <p className="rounded-full border border-white/35 bg-white/15 px-3 py-1 text-xs text-white">Badge: {badge}</p>
+          </div>
         </div>
         <p className="mt-2 text-xs text-white/65">This app never moves your SOL or tokens. Wallet transactions only record your check-in or score submission.</p>
       </header>

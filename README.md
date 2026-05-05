@@ -1,4 +1,4 @@
-# FAT CAT Match-3 (Vite)
+# FAT CAT (Vite)
 
 A lightweight Solana-only meme-token match-3 game built with Vite + React + TypeScript + Tailwind.
 

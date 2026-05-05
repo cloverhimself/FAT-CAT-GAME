@@ -10,7 +10,6 @@ import { SocialLinks } from "@/components/SocialLinks";
 import { clearAndDrop, createBoard, scoreForMatch } from "@/lib/game/gameLogic";
 import { Coord } from "@/lib/game/types";
 import { findMatches } from "@/lib/game/tileMatching";
-import { getNetworkLabel } from "@/lib/config/network";
 import { submitDailyCheckInTx, toUtcDay } from "@/lib/solana/dailyCheckIn";
 import { submitScoreTx } from "@/lib/solana/scoreSubmission";
 import { SolanaTxState, checkRpcHealth, classifyTxError, toErrorMessage } from "@/lib/solana/txHelpers";
@@ -30,7 +29,7 @@ import { hasSupabaseEnv } from "@/lib/supabase/client";
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const MAX_SCORE = 1_000_000;
 const MAX_LEVEL = 20;
-const MIN_SESSION_MS = 25_000;
+const MIN_SESSION_MS = 8_000;
 
 function targetForLevel(level: number): number {
   return 350 + Math.floor(level * level * 38);
@@ -416,12 +415,6 @@ function AppShell() {
       return;
     }
 
-    if (!levelFailed && level < MAX_LEVEL) {
-      setSubmitState("failed");
-      setFeedback("Complete a valid session before submitting score.");
-      return;
-    }
-
     const endedAt = sessionMeta.endedAt ?? Date.now();
     const sessionDuration = endedAt - sessionMeta.startedAt;
     if (sessionDuration < MIN_SESSION_MS) {
@@ -436,7 +429,7 @@ function AppShell() {
       return;
     }
 
-    const impossibleScoreLimit = sessionMeta.movesUsed * 520 + level * 2400;
+    const impossibleScoreLimit = sessionMeta.movesUsed * 1500 + level * 5000;
     if (score > impossibleScoreLimit) {
       setSubmitState("failed");
       setFeedback("Impossible score detected for this session.");
@@ -522,8 +515,7 @@ function AppShell() {
       <header className="glass-panel rounded-3xl p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h1 className="text-3xl font-black text-white">FAT CAT Match-3</h1>
-            <p className="text-xs uppercase tracking-[0.16em] text-accent2">Network: {getNetworkLabel()}</p>
+            <h1 className="text-3xl font-black text-white">FAT CAT</h1>
           </div>
           <p className="rounded-full border border-white/35 bg-white/15 px-3 py-1 text-xs text-white">Badge: {badge}</p>
         </div>

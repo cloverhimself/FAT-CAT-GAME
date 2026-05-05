@@ -1,5 +1,7 @@
+import { ReactNode } from "react";
 import { SOLANA_CLUSTER } from "@/lib/config/network";
 import { SolanaTxState } from "@/lib/solana/txHelpers";
+import { FaWallet, FaDatabase, FaCheckCircle, FaTrophy } from "react-icons/fa";
 
 type Props = {
   walletConnected: boolean;
@@ -32,12 +34,21 @@ export function WalletStatusBanner({
   onRetryCheckIn,
   onRetrySubmit,
 }: Props) {
+  const Row = ({ icon, label, value }: { icon: ReactNode; label: string; value: string }) => (
+    <div className="flex items-center gap-2">
+      <span className="text-cyan-200">{icon}</span>
+      <span className="text-white/85">
+        {label}: {value}
+      </span>
+    </div>
+  );
+
   return (
     <div className="glass-panel grid gap-2 rounded-2xl p-4 text-sm text-white/85">
-      <p>Wallet: {walletConnecting ? "Connecting..." : walletConnected ? "Connected" : "Disconnected"}</p>
-      <p>RPC: {rpcHealthy ? "Healthy" : `Issue: ${rpcReason ?? "unknown"}`}</p>
-      <p>Check-in: {txLabel[checkInState]}</p>
-      <p>Score submit: {txLabel[submitState]}</p>
+      <Row icon={<FaWallet />} label="Wallet" value={walletConnecting ? "Connecting..." : walletConnected ? "Connected" : "Disconnected"} />
+      <Row icon={<FaDatabase />} label="RPC" value={rpcHealthy ? "Healthy" : `Issue: ${rpcReason ?? "unknown"}`} />
+      <Row icon={<FaCheckCircle />} label="Check-in" value={txLabel[checkInState]} />
+      <Row icon={<FaTrophy />} label="Score submit" value={txLabel[submitState]} />
       <div className="flex flex-wrap gap-2 pt-1">
         {(checkInState === "failed" || checkInState === "rejected") && (
           <button

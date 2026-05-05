@@ -1,6 +1,6 @@
 import { ChangeEvent, useState } from "react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { MEME_TOKEN_NAME, getNetworkLabel } from "@/lib/config/network";
+import { MEME_TOKEN_NAME } from "@/lib/config/network";
 
 type Props = {
   username: string;
@@ -11,7 +11,7 @@ type Props = {
 };
 
 export function OnboardingScreen({ username, onUsernameChange, onStart, canStart, rpcHealthy }: Props) {
-  const [bannerSrc, setBannerSrc] = useState("/img/fatcats-banner.png");
+  const [bannerSrc, setBannerSrc] = useState("/img/fatcats-tab.png");
 
   return (
     <section className="glass-panel mx-auto flex w-full max-w-xl flex-col gap-6 rounded-3xl p-8">
@@ -26,12 +26,12 @@ export function OnboardingScreen({ username, onUsernameChange, onStart, canStart
 
       <div className="text-center">
         <p className="text-sm uppercase tracking-[0.2em] text-accent2">{MEME_TOKEN_NAME} Community Quest</p>
-        <h1 className="mt-3 text-4xl font-black text-white">FAT CAT Match 3</h1>
+        <h1 className="mt-3 text-4xl font-black text-white">FAT CAT</h1>
         <p className="mt-2 text-sm text-white/70">Connect wallet, pick username, and play for daily on-chain activity.</p>
       </div>
 
       <div className="rounded-xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-white/85">
-        <p className="font-semibold text-white">Fat Cats Match-3 Quest</p>
+        <p className="font-semibold text-white">FAT CAT Quest</p>
         <p className="mt-1">
           Play daily, match tiles, build streaks, submit your score on Solana, and climb the Fat Cats leaderboard. This app never moves user funds. Transactions only record check-ins and score submissions.
         </p>
@@ -55,7 +55,7 @@ export function OnboardingScreen({ username, onUsernameChange, onStart, canStart
         <WalletMultiButton className="!h-12 !rounded-xl !bg-gradient-to-r !from-[#ffe3ef] !to-[#fff6df] !font-bold !text-[#ef3f87] !shadow-md !transition !hover:scale-[1.01]" />
         {!rpcHealthy && (
           <p className="rounded-lg border border-red-400/40 bg-red-400/10 px-3 py-2 text-sm text-red-200">
-            RPC unavailable. Check endpoint or switch to a healthy {getNetworkLabel()} RPC.
+            RPC unavailable. Check your endpoint in .env.local.
           </p>
         )}
       </div>

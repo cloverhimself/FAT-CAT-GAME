@@ -1,4 +1,4 @@
-import { PointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { PointerEvent, TouchEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Coord, GRID_SIZE, TileValue } from "@/lib/game/types";
 import { isAdjacent } from "@/lib/game/tileMatching";
 
@@ -34,6 +34,27 @@ function coordToKey(row: number, col: number): string {
 
 function inBounds(coord: Coord): boolean {
   return coord.row >= 0 && coord.row < GRID_SIZE && coord.col >= 0 && coord.col < GRID_SIZE;
+}
+
+function getSwipeTarget(from: Coord, dx: number, dy: number): Coord | null {
+  const absX = Math.abs(dx);
+  const absY = Math.abs(dy);
+  if (Math.max(absX, absY) < 8) return null;
+
+  // Ignore near-diagonal swipes; require a clear cardinal direction.
+  if (absX > 0 && absY > 0) {
+    const ratio = absX > absY ? absX / absY : absY / absX;
+    if (ratio < 1.2) return null;
+  }
+
+  const target = { ...from };
+  if (absX > absY) {
+    target.col += dx > 0 ? 1 : -1;
+  } else {
+    target.row += dy > 0 ? 1 : -1;
+  }
+
+  return inBounds(target) ? target : null;
 }
 
 export function GameBoard({ board, clearingSet, locked, onSwap, pendingSwap, fxTick }: Props) {
@@ -111,19 +132,25 @@ export function GameBoard({ board, clearingSet, locked, onSwap, pendingSwap, fxT
 
     const dx = event.clientX - gesture.startX;
     const dy = event.clientY - gesture.startY;
-    const absX = Math.abs(dx);
-    const absY = Math.abs(dy);
+    const target = getSwipeTarget(gesture.coord, dx, dy);
+    if (!target) return;
 
-    if (Math.max(absX, absY) < 10) return;
+    gestureRef.current = { ...gesture, triggeredSwap: true };
+    setDragging(null);
+    trySwap(gesture.coord, target);
+  };
 
-    const target = { ...gesture.coord };
-    if (absX > absY) {
-      target.col += dx > 0 ? 1 : -1;
-    } else {
-      target.row += dy > 0 ? 1 : -1;
-    }
+  const handleTouchMove = (event: TouchEvent) => {
+    event.preventDefault();
+    const gesture = gestureRef.current;
+    if (!gesture.active || !gesture.coord || gesture.triggeredSwap || locked) return;
+    const touch = event.changedTouches[0];
+    if (!touch) return;
 
-    if (!inBounds(target)) return;
+    const dx = touch.clientX - gesture.startX;
+    const dy = touch.clientY - gesture.startY;
+    const target = getSwipeTarget(gesture.coord, dx, dy);
+    if (!target) return;
 
     gestureRef.current = { ...gesture, triggeredSwap: true };
     setDragging(null);
@@ -180,6 +207,14 @@ export function GameBoard({ board, clearingSet, locked, onSwap, pendingSwap, fxT
                   onPointerMove={handlePointerMove}
                   onPointerUp={handlePointerUp}
                   onPointerCancel={handlePointerUp}
+                  onTouchStart={(event) => {
+                    const touch = event.changedTouches[0];
+                    if (!touch) return;
+                    handlePointerDown({ row: r, col: c }, touch.clientX, touch.clientY);
+                  }}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handlePointerUp}
+                  onTouchCancel={handlePointerUp}
                 >
                   <span className="tile-gloss" />
                   <img src={TILE_ART[tile]} alt={`tile-${tile}`} className={`h-full w-full rounded-full object-cover ${dropPulse ? "tile-drop" : ""}`} />

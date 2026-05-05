@@ -27,6 +27,7 @@ import {
   upsertUser,
 } from "@/lib/supabase/gameData";
 import { hasSupabaseEnv } from "@/lib/supabase/client";
+import { clearWalletSession, ensureWalletSession } from "@/lib/supabase/walletSession";
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const MAX_SCORE = 1_000_000;
@@ -224,12 +225,16 @@ function AppShell() {
     if (!wallet.publicKey || !hasSupabaseEnv) {
       setProgress(null);
       setUsername("");
+      if (!wallet.publicKey) {
+        clearWalletSession();
+      }
       return;
     }
 
     let active = true;
     const load = async () => {
       try {
+        await ensureWalletSession(wallet);
         const current = await fetchUserProgress(wallet.publicKey!.toBase58());
         if (!active) return;
         setProgress(current);
@@ -297,6 +302,7 @@ function AppShell() {
       };
 
     try {
+      await ensureWalletSession(wallet);
       const nextProgress = await upsertUser({ wallet: walletKey, username: clean, progress: base });
       setProgress(nextProgress);
       setUsername(clean);
@@ -456,6 +462,7 @@ function AppShell() {
     }
 
     try {
+      await ensureWalletSession(wallet);
       setCheckInState("loading");
       setFeedback("");
 
@@ -541,6 +548,7 @@ function AppShell() {
     }
 
     try {
+      await ensureWalletSession(wallet);
       setSubmitState("loading");
       setFeedback("");
 

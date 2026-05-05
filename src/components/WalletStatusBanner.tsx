@@ -1,7 +1,5 @@
-"use client";
-
-import { SolanaTxState } from "@/lib/solana/txHelpers";
 import { SOLANA_CLUSTER } from "@/lib/config/network";
+import { SolanaTxState } from "@/lib/solana/txHelpers";
 
 type Props = {
   walletConnected: boolean;
@@ -19,7 +17,6 @@ const txLabel: Record<SolanaTxState, string> = {
   success: "Transaction confirmed",
   failed: "Transaction failed",
   rejected: "Transaction rejected",
-  insufficient_funds: "Insufficient SOL for fees",
 };
 
 export function WalletStatusBanner({
@@ -33,9 +30,7 @@ export function WalletStatusBanner({
 }: Props) {
   return (
     <div className="grid gap-2 rounded-2xl border border-white/10 bg-panel/80 p-4 text-sm text-white/80">
-      <p>
-        Wallet: {walletConnecting ? "Connecting..." : walletConnected ? "Connected" : "Disconnected"}
-      </p>
+      <p>Wallet: {walletConnecting ? "Connecting..." : walletConnected ? "Connected" : "Disconnected"}</p>
       <p>RPC: {rpcHealthy ? "Healthy" : `Issue: ${rpcReason ?? "unknown"}`}</p>
       <p>Check-in: {txLabel[checkInState]}</p>
       <p>Score submit: {txLabel[submitState]}</p>

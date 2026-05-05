@@ -1,8 +1,6 @@
-"use client";
-
 import { ChangeEvent } from "react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { getNetworkLabel, MEME_TOKEN_NAME } from "@/lib/config/network";
+import { MEME_TOKEN_NAME, getNetworkLabel } from "@/lib/config/network";
 
 type Props = {
   username: string;
@@ -18,7 +16,7 @@ export function OnboardingScreen({ username, onUsernameChange, onStart, canStart
       <div className="text-center">
         <p className="text-sm uppercase tracking-[0.2em] text-accent2">{MEME_TOKEN_NAME} Community Quest</p>
         <h1 className="mt-3 text-4xl font-black text-white">Meme Match 3</h1>
-        <p className="mt-2 text-sm text-white/70">Connect wallet, lock your meme identity, and grind daily on-chain check-ins.</p>
+        <p className="mt-2 text-sm text-white/70">Connect wallet, pick username, and play for daily on-chain activity.</p>
       </div>
 
       <div className="flex flex-col gap-3">
@@ -39,7 +37,7 @@ export function OnboardingScreen({ username, onUsernameChange, onStart, canStart
         <WalletMultiButton className="!h-12 !rounded-xl !bg-accent !font-bold !text-[#0e1116]" />
         {!rpcHealthy && (
           <p className="rounded-lg border border-red-400/40 bg-red-400/10 px-3 py-2 text-sm text-red-200">
-            RPC unavailable. Check your endpoint or switch to a healthy {getNetworkLabel()} RPC.
+            RPC unavailable. Check endpoint or switch to a healthy {getNetworkLabel()} RPC.
           </p>
         )}
       </div>
@@ -53,7 +51,7 @@ export function OnboardingScreen({ username, onUsernameChange, onStart, canStart
         Start Game
       </button>
 
-      <p className="text-center text-xs text-white/50">Network: {getNetworkLabel()} | Solana only</p>
+      <p className="text-center text-xs text-white/50">Supports Phantom, Solflare, Backpack, and wallet-standard compatible wallets.</p>
     </section>
   );
 }

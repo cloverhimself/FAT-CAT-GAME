@@ -21,9 +21,7 @@ export async function submitScoreTx(args: {
   sessionId: string;
 }): Promise<{ signature: string; payload: ScoreSubmissionPayload }> {
   const { connection, wallet, username, score, level, sessionId } = args;
-  if (!wallet.publicKey) {
-    throw new Error("Wallet is not connected");
-  }
+  if (!wallet.publicKey) throw new Error("Wallet is not connected");
 
   const payload: ScoreSubmissionPayload = {
     type: "score_submission",

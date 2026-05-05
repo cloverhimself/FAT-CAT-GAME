@@ -1,7 +1,3 @@
-"use client";
-
-import { MEME_TOKEN_NAME } from "@/lib/config/network";
-
 type Props = {
   username: string;
   score: number;
@@ -9,11 +5,13 @@ type Props = {
   streak: number;
   totalXP: number;
   totalCheckIns: number;
+  movesRemaining: number;
   onCheckIn: () => void;
   onSubmitScore: () => void;
   canCheckIn: boolean;
   checkInBusy: boolean;
   submitBusy: boolean;
+  outOfMoves: boolean;
 };
 
 export function GameHud({
@@ -23,18 +21,21 @@ export function GameHud({
   streak,
   totalXP,
   totalCheckIns,
+  movesRemaining,
   onCheckIn,
   onSubmitScore,
   canCheckIn,
   checkInBusy,
   submitBusy,
+  outOfMoves,
 }: Props) {
   return (
     <section className="grid gap-3 rounded-2xl border border-white/10 bg-panel/85 p-4 shadow-glow">
-      <div className="grid grid-cols-2 gap-2 text-sm text-white/80 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2 text-sm text-white/80 sm:grid-cols-4">
         <div className="rounded-lg bg-black/25 p-2">User: {username}</div>
         <div className="rounded-lg bg-black/25 p-2">Score: {score}</div>
         <div className="rounded-lg bg-black/25 p-2">Level: {level}</div>
+        <div className="rounded-lg bg-black/25 p-2">Moves: {movesRemaining}</div>
         <div className="rounded-lg bg-black/25 p-2">Streak: {streak} days</div>
         <div className="rounded-lg bg-black/25 p-2">XP: {totalXP}</div>
         <div className="rounded-lg bg-black/25 p-2">Check-ins: {totalCheckIns}</div>
@@ -60,7 +61,8 @@ export function GameHud({
         </button>
       </div>
 
-      <p className="text-xs text-white/60">{MEME_TOKEN_NAME} retention loop: check in daily, earn streak bonuses, and lock score proofs on Solana.</p>
+      {outOfMoves && <p className="text-xs text-accent2">Out of moves. Submit this run or restart from onboarding.</p>}
+      <p className="text-xs text-white/60">Rewards are manual only. No token distributions are automated in-app.</p>
     </section>
   );
 }

@@ -20,9 +20,7 @@ export async function submitDailyCheckInTx(args: {
   username: string;
 }): Promise<{ signature: string; payload: DailyCheckInPayload }> {
   const { connection, wallet, username } = args;
-  if (!wallet.publicKey) {
-    throw new Error("Wallet is not connected");
-  }
+  if (!wallet.publicKey) throw new Error("Wallet is not connected");
 
   const payload: DailyCheckInPayload = {
     type: "daily_checkin",

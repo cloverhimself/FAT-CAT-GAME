@@ -1,13 +1,5 @@
-"use client";
-
 import { useMemo, useState } from "react";
-import {
-  LeaderboardEntry,
-  sortByCheckIns,
-  sortByHighestScore,
-  sortByStreak,
-  sortByXP,
-} from "@/lib/state/leaderboard";
+import { LeaderboardEntry, sortByCheckIns, sortByHighestScore, sortByStreak, sortByXP } from "@/lib/state/leaderboard";
 
 type Mode = "score" | "streak" | "xp" | "checkins";
 
@@ -33,7 +25,6 @@ export function LeaderboardPanel({ entries }: Props) {
         return sortByXP(entries);
       case "checkins":
         return sortByCheckIns(entries);
-      case "score":
       default:
         return sortByHighestScore(entries);
     }
@@ -74,7 +65,7 @@ export function LeaderboardPanel({ entries }: Props) {
           </div>
         ))}
 
-        {sorted.length === 0 && <p className="text-sm text-white/55">No submissions yet. Submit a score to seed the board.</p>}
+        {sorted.length === 0 && <p className="text-sm text-white/55">No submissions yet. Submit a score to appear.</p>}
       </div>
     </section>
   );

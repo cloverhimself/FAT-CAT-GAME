@@ -1,6 +1,3 @@
-"use client";
-
-import Image from "next/image";
 import { useRef, useState } from "react";
 import { Coord, GRID_SIZE, TileValue } from "@/lib/game/types";
 
@@ -66,7 +63,7 @@ export function GameBoard({ board, clearingSet, locked, onSwap }: Props) {
               type="button"
               className={`relative aspect-square overflow-hidden rounded-lg border border-white/10 transition ${
                 isSelected ? "scale-95 border-accent" : ""
-              } ${isClearing ? "animate-ping opacity-40" : ""}`}
+              } ${isClearing ? "opacity-40" : ""}`}
               onClick={() => onTileClick({ row: r, col: c })}
               draggable={!locked}
               onDragStart={() => {
@@ -103,7 +100,7 @@ export function GameBoard({ board, clearingSet, locked, onSwap }: Props) {
                 }
 
                 const from = indexToCoord(start.idx);
-                let to = { ...from };
+                const to = { ...from };
                 if (absX > absY) {
                   to.col += dx > 0 ? 1 : -1;
                 } else {
@@ -116,14 +113,7 @@ export function GameBoard({ board, clearingSet, locked, onSwap }: Props) {
                 touchStart.current = null;
               }}
             >
-              <Image
-                src={TILE_ART[tile]}
-                alt={`tile-${tile}`}
-                fill
-                className="h-full w-full object-cover"
-                sizes="(max-width: 768px) 12vw, 64px"
-                priority={r < 2 && c < 2}
-              />
+              <img src={TILE_ART[tile]} alt={`tile-${tile}`} className="h-full w-full object-cover" />
             </button>
           );
         }),

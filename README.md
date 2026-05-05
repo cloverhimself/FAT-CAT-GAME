@@ -1,68 +1,49 @@
-# Solana Meme Match-3
+# Solana Meme Match-3 (Vite)
 
-A Solana-only, meme-token themed match-3 game with:
+A lightweight Solana-only meme-token match-3 game built with Vite + React + TypeScript + Tailwind.
 
-- Wallet onboarding (Phantom, Solflare, wallet-adapter compatible wallets)
-- Username + wallet-gated start
-- 8x8 drag/swipe match-3 board
-- Daily on-chain check-in (memo tx)
-- On-chain score submission (memo tx)
-- Local XP, streak, and leaderboard retention loop
+## Features
 
-## Stack
+- Solana wallet connection via wallet adapter
+- Phantom, Solflare, Backpack, and wallet-standard compatible wallets
+- Username onboarding before gameplay
+- 8x8 match-3 board with drag (desktop) and swipe (mobile)
+- Meme-themed tiles from `public/img`
+- Score + level + moves system
+- Daily check-in memo transaction
+- Score submission memo transaction
+- Local leaderboard, XP, and streak tracking
+- Responsive layout for desktop/tablet/mobile
+- Transaction states: loading, success, failed, rejected
+- Devnet/Mainnet RPC config from env
 
-- Next.js + React + TypeScript
-- Tailwind CSS
-- `@solana/web3.js`
-- Solana wallet adapter
+## Security
 
-## Network Configuration
+- No token transfers
+- No private key or seed phrase handling
+- No automatic airdrops
+- Rewards are manual only
+- On-chain actions are memo check-ins and memo score submissions only
+- UI explicitly states the app never moves user funds
 
-Use env vars (see `.env.example`):
+## Environment
 
-- `NEXT_PUBLIC_SOLANA_CLUSTER` (`devnet` or `mainnet-beta`)
-- `NEXT_PUBLIC_SOLANA_RPC_URL` (RPC endpoint)
-- `NEXT_PUBLIC_MEME_TOKEN_NAME` (branding label)
+Copy `.env.example` to `.env.local` (or `.env`) and set:
 
-Primary config file:
-
-- `src/lib/config/network.ts`
-
-## Install
-
-```bash
-npm install
-```
+- `VITE_SOLANA_CLUSTER=devnet` or `mainnet-beta`
+- `VITE_SOLANA_RPC_URL=...`
+- `VITE_MEME_TOKEN_NAME=...`
 
 ## Run
 
 ```bash
+npm install
 npm run dev
 ```
 
 ## Build
 
 ```bash
+npm run typecheck
 npm run build
 ```
-
-## Gameplay + Engagement Mechanics
-
-- Match 3+ themed tiles for score.
-- Cascades grant bonus score.
-- Daily check-in submits a memo transaction as proof of activity.
-- Score submission sends session metadata on-chain via memo.
-- Local retention state tracks streak, total XP, total check-ins, and best score.
-- Leaderboard supports sorting by score, streak, XP, and check-ins.
-
-## Important Files
-
-- `src/lib/game/gameLogic.ts`
-- `src/lib/game/tileMatching.ts`
-- `src/lib/solana/txHelpers.ts`
-- `src/lib/solana/dailyCheckIn.ts`
-- `src/lib/solana/scoreSubmission.ts`
-- `src/lib/state/leaderboard.ts`
-- `src/components/SolanaAppProvider.tsx`
-- `src/components/GameBoard.tsx`
-- `src/app/page.tsx`

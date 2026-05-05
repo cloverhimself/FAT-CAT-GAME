@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { FaXTwitter, FaYoutube, FaTiktok, FaInstagram, FaTelegram } from "react-icons/fa6";
-import { HiGlobeAlt } from "react-icons/hi";
+import { FaGlobeAmericas } from "react-icons/fa";
 import { BsGraphUpArrow } from "react-icons/bs";
 
 type LinkItem = {
@@ -15,7 +15,7 @@ const links: LinkItem[] = [
   { label: "TikTok", href: "https://www.tiktok.com/@fatcatsai_", icon: <FaTiktok /> },
   { label: "Instagram", href: "https://www.instagram.com/fatcatsai", icon: <FaInstagram /> },
   { label: "Telegram", href: "https://t.me/fatcatsunited", icon: <FaTelegram /> },
-  { label: "Aura", href: "https://fatcats.ai/aura", icon: <HiGlobeAlt /> },
+  { label: "Aura", href: "https://fatcats.ai/aura", icon: <FaGlobeAmericas /> },
   {
     label: "Dexscreener",
     href: "https://dexscreener.com/solana/FCUnZjb8kb3N4tExZ9NXPxaNRVwudaBCA6ATC6X94kiM",
@@ -34,9 +34,11 @@ export function SocialLinks() {
             href={item.href}
             target="_blank"
             rel="noreferrer"
-            className="flex items-center gap-2 rounded-lg bg-white/15 px-3 py-2 text-sm text-white transition hover:-translate-y-0.5 hover:bg-white/25"
+            className="group flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:border-cyan-200/60 hover:bg-white/20"
           >
-            <span className="text-base">{item.icon}</span>
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[#ff8fca] via-[#ff965f] to-[#5ce9ff] text-sm text-[#122032] shadow-sm transition group-hover:scale-105">
+              {item.icon}
+            </span>
             <span>{item.label}</span>
           </a>
         ))}

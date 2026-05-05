@@ -10,8 +10,7 @@ import { SocialLinks } from "@/components/SocialLinks";
 import { clearAndDrop, createBoard, scoreForMatch } from "@/lib/game/gameLogic";
 import { Coord } from "@/lib/game/types";
 import { findMatches } from "@/lib/game/tileMatching";
-import { submitDailyCheckInTx, toUtcDay } from "@/lib/solana/dailyCheckIn";
-import { submitScoreTx } from "@/lib/solana/scoreSubmission";
+import { toUtcDay } from "@/lib/solana/dailyCheckIn";
 import { SolanaTxState, checkRpcHealth, classifyTxError, toErrorMessage } from "@/lib/solana/txHelpers";
 import { LeaderboardEntry } from "@/lib/state/leaderboard";
 import { getSoundEngine } from "@/lib/audio/sound";
@@ -82,6 +81,10 @@ type SessionMeta = {
   movesUsed: number;
 };
 
+type LevelUpState = {
+  nextLevel: number;
+};
+
 function AppShell() {
   const { connection } = useConnection();
   const wallet = useWallet();
@@ -119,12 +122,20 @@ function AppShell() {
 
   const [checkInState, setCheckInState] = useState<SolanaTxState>("idle");
   const [submitState, setSubmitState] = useState<SolanaTxState>("idle");
-  const [lastSignature, setLastSignature] = useState<string | null>(null);
+  const [lastRecordId, setLastRecordId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
   const [soundEnabled, setSoundEnabled] = useState(() => {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("fat-cat-sound") !== "off";
   });
+  const [soundVolume, setSoundVolume] = useState(() => {
+    if (typeof window === "undefined") return 0.55;
+    const raw = localStorage.getItem("fat-cat-volume");
+    const parsed = raw ? Number(raw) : 0.55;
+    return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : 0.55;
+  });
+  const [musicPlaying, setMusicPlaying] = useState(false);
+  const [levelUpState, setLevelUpState] = useState<LevelUpState | null>(null);
 
   const refreshLeaderboard = async () => {
     if (!hasSupabaseEnv) return;
@@ -138,19 +149,20 @@ function AppShell() {
 
   useEffect(() => {
     sound.setEnabled(soundEnabled);
+    sound.setVolume(soundVolume);
     if (typeof window !== "undefined") {
       localStorage.setItem("fat-cat-sound", soundEnabled ? "on" : "off");
+      localStorage.setItem("fat-cat-volume", String(soundVolume));
     }
-    if (started && soundEnabled) {
-      sound.startAmbient();
-    } else {
-      sound.stopAmbient();
+    if (!soundEnabled) {
+      sound.pauseMusic();
+      setMusicPlaying(false);
     }
-  }, [sound, soundEnabled, started]);
+  }, [sound, soundEnabled, soundVolume]);
 
   useEffect(() => {
     return () => {
-      sound.stopAmbient();
+      sound.pauseMusic();
     };
   }, [sound]);
 
@@ -209,7 +221,7 @@ function AppShell() {
 
   const canStart = wallet.connected && usernameInput.trim().length >= 3 && rpcHealthy && hasSupabaseEnv;
   const canCheckIn = !!progress && !isSameDay(progress.lastCheckInDay) && checkInState !== "loading";
-  const boardLocked = isResolving || levelFailed || pendingSwap !== null;
+  const boardLocked = isResolving || levelFailed || pendingSwap !== null || levelUpState !== null;
 
   const resetRunForLevel = (nextLevel: number) => {
     setBoard(createBoard(nextLevel));
@@ -258,9 +270,11 @@ function AppShell() {
       setPendingSwap(null);
       setScorePop(null);
       setFeedback("");
-      sound.playSuccess();
+      sound.playCheckInSuccess();
+      const startedMusic = await sound.startMusic();
+      setMusicPlaying(startedMusic);
     } catch (error) {
-      sound.playError();
+      sound.playGameOver();
       setFeedback(toErrorMessage(error));
     }
   };
@@ -301,7 +315,7 @@ function AppShell() {
   const handleSwap = async (a: Coord, b: Coord) => {
     if (boardLocked) return;
     sound.unlock();
-    sound.playSwipe();
+    sound.playSwap();
 
     const original = board;
     const nextMovesLeft = Math.max(0, movesRemaining - 1);
@@ -327,12 +341,12 @@ function AppShell() {
         await delay(130);
         setBoard(original);
         setPendingSwap(null);
-        sound.playError();
+        sound.playInvalidSwap();
       } else {
         if (cascades > 1) {
           sound.playCombo(cascades);
         } else {
-          sound.playMatch();
+          sound.playMatchPop();
         }
         const newTotal = Math.min(score + gained, MAX_SCORE);
         const newLevelScore = levelScore + gained;
@@ -344,12 +358,12 @@ function AppShell() {
             setFeedback("Max level reached. Submit your run.");
             setLevelFailed(true);
             setSessionMeta((prev) => ({ ...prev, endedAt: Date.now() }));
-            sound.playSuccess();
+            sound.playLevelUp();
           } else {
             const nextLevel = level + 1;
-            setFeedback(`Level ${level} cleared. Welcome to level ${nextLevel}.`);
-            resetRunForLevel(nextLevel);
-            sound.playSuccess();
+            setFeedback(`Level ${level} cleared.`);
+            setLevelUpState({ nextLevel });
+            sound.playLevelUp();
           }
         } else {
           setLevelScore(newLevelScore);
@@ -360,7 +374,7 @@ function AppShell() {
         setLevelFailed(true);
         setSessionMeta((prev) => ({ ...prev, endedAt: Date.now() }));
         setFeedback("Level failed. Moves exhausted before target score. Try Again.");
-        sound.playError();
+        sound.playGameOver();
       }
     } finally {
       setIsResolving(false);
@@ -375,7 +389,18 @@ function AppShell() {
     setSessionMeta({ id: crypto.randomUUID(), startedAt: Date.now(), endedAt: null, movesUsed: 0 });
     setPendingSwap(null);
     setSubmitState("idle");
+    setLevelUpState(null);
     setFeedback("New run started.");
+  };
+
+  const handleContinueLevel = () => {
+    if (!levelUpState) return;
+    sound.unlock();
+    sound.playClick();
+    const nextLevel = levelUpState.nextLevel;
+    setLevelUpState(null);
+    resetRunForLevel(nextLevel);
+    setFeedback(`You advanced to level ${nextLevel}.`);
   };
 
   const handleCheckIn = async () => {
@@ -393,13 +418,8 @@ function AppShell() {
       setCheckInState("loading");
       setFeedback("");
 
-      const result = await submitDailyCheckInTx({
-        connection,
-        wallet,
-        username: cleanUsername,
-      });
-
       const today = toUtcDay();
+      const dbCheckinId = `db-checkin-${walletKey.slice(0, 8)}-${today}`;
       const wasYesterday = progress.lastCheckInDay ? utcYesterdayOf(today) === progress.lastCheckInDay : false;
       const nextStreak = progress.lastCheckInDay === today ? progress.streak : wasYesterday ? progress.streak + 1 : 1;
       const xpGain = 40 + Math.min(nextStreak * 5, 60);
@@ -415,7 +435,7 @@ function AppShell() {
       await saveDailyCheckin({
         wallet: walletKey,
         username: cleanUsername,
-        txSignature: result.signature,
+        txSignature: dbCheckinId,
         checkinDate: today,
         xpAwarded: xpGain,
         nextProgress,
@@ -424,14 +444,14 @@ function AppShell() {
       setProgress(nextProgress);
       setUsername(cleanUsername);
       setCheckInState("success");
-      setLastSignature(result.signature);
-      setFeedback(`Daily check-in confirmed. +${xpGain} XP`);
-      sound.playSuccess();
+      setLastRecordId(dbCheckinId);
+      setFeedback(`Daily check-in saved. +${xpGain} XP`);
+      sound.playCheckInSuccess();
       await refreshLeaderboard();
     } catch (error) {
       setCheckInState(classifyTxError(error));
       setFeedback(toErrorMessage(error));
-      sound.playError();
+      sound.playGameOver();
     }
   };
 
@@ -490,14 +510,7 @@ function AppShell() {
         return;
       }
 
-      const result = await submitScoreTx({
-        connection,
-        wallet,
-        username: cleanUsername,
-        score,
-        level,
-        sessionId: sessionMeta.id,
-      });
+      const dbScoreId = `db-score-${sessionMeta.id}`;
 
       submittedSessions.add(sessionMeta.id);
       saveSubmittedSessions(walletKey, submittedSessions);
@@ -521,7 +534,7 @@ function AppShell() {
         level,
         movesUsed: sessionMeta.movesUsed,
         gameSessionId: sessionMeta.id,
-        txSignature: result.signature,
+        txSignature: dbScoreId,
         suspiciousScore,
         suspiciousReason: suspiciousReasons.length ? suspiciousReasons.join(",") : null,
         nextProgress,
@@ -530,15 +543,26 @@ function AppShell() {
       setProgress(nextProgress);
       setUsername(cleanUsername);
       setSubmitState("success");
-      setLastSignature(result.signature);
-      setFeedback(`Score submitted on-chain. +${xpFromRun} XP. Manual rewards review only.`);
-      sound.playSuccess();
+      setLastRecordId(dbScoreId);
+      setFeedback(`Score saved. +${xpFromRun} XP. Manual rewards review only.`);
+      sound.playScoreSubmitSuccess();
       await refreshLeaderboard();
     } catch (error) {
       setSubmitState(classifyTxError(error));
       setFeedback(toErrorMessage(error));
-      sound.playError();
+      sound.playGameOver();
     }
+  };
+
+  const handleToggleMusic = async () => {
+    sound.unlock();
+    if (musicPlaying) {
+      sound.pauseMusic();
+      setMusicPlaying(false);
+      return;
+    }
+    const startedMusic = await sound.startMusic();
+    setMusicPlaying(startedMusic);
   };
 
   const handleRetrySubmit = () => {
@@ -572,7 +596,14 @@ function AppShell() {
           <div>
             <h1 className="text-3xl font-black text-white">FAT CAT</h1>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleToggleMusic()}
+              className="rounded-full border border-white/35 bg-white/15 px-3 py-1 text-xs font-semibold text-white transition hover:bg-white/25"
+            >
+              {musicPlaying ? "Pause Music" : "Play Music"}
+            </button>
             <button
               type="button"
               onClick={() => setSoundEnabled((prev) => !prev)}
@@ -580,10 +611,21 @@ function AppShell() {
             >
               Sound: {soundEnabled ? "On" : "Off"}
             </button>
+            <label className="flex items-center gap-2 rounded-full border border-white/35 bg-white/15 px-3 py-1 text-xs font-semibold text-white">
+              Volume
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(soundVolume * 100)}
+                onChange={(event) => setSoundVolume(Number(event.target.value) / 100)}
+                className="h-1 w-20 accent-cyan-300"
+              />
+            </label>
             <p className="rounded-full border border-white/35 bg-white/15 px-3 py-1 text-xs text-white">Badge: {badge}</p>
           </div>
         </div>
-        <p className="mt-2 text-xs text-white/65">This app never moves your SOL or tokens. Wallet transactions only record your check-in or score submission.</p>
+        <p className="mt-2 text-xs text-white/65">This app never moves your SOL or tokens. Wallet-linked check-ins and scores are saved for leaderboard and manual rewards only.</p>
       </header>
 
       <WalletStatusBanner
@@ -593,7 +635,7 @@ function AppShell() {
         rpcReason={rpcReason}
         checkInState={checkInState}
         submitState={submitState}
-        lastSignature={lastSignature}
+        lastRecordId={lastRecordId}
         onRetryCheckIn={handleRetryCheckIn}
         onRetrySubmit={handleRetrySubmit}
       />
@@ -641,6 +683,7 @@ function AppShell() {
                   {scorePop.text}
                 </div>
               )}
+              {levelUpState && <div className="absolute inset-0 z-20 rounded-[28px] bg-black/40 backdrop-blur-sm" />}
               <GameBoard
                 board={board}
                 clearingSet={clearingSet}
@@ -649,6 +692,27 @@ function AppShell() {
                 pendingSwap={pendingSwap}
                 fxTick={matchFxTick}
               />
+              {levelUpState && (
+                <div className="levelup-overlay absolute inset-0 z-30 flex items-center justify-center p-4">
+                  <div className="levelup-modal relative w-full max-w-sm overflow-hidden rounded-2xl border border-cyan-200/55 bg-[#121a3dcc] p-5 text-center shadow-[0_0_35px_rgba(84,230,255,0.35)] backdrop-blur-md">
+                    <div className="pointer-events-none absolute inset-0">
+                      <span className="levelup-spark levelup-spark-1" />
+                      <span className="levelup-spark levelup-spark-2" />
+                      <span className="levelup-spark levelup-spark-3" />
+                    </div>
+                    <img src="/img/fatcats-tab.png" alt="FAT CAT character art" className="mx-auto h-24 w-24 rounded-full border border-white/35 object-cover shadow-lg" />
+                    <h3 className="mt-3 text-3xl font-black tracking-wide text-white">LEVEL UP!</h3>
+                    <p className="mt-1 text-sm text-cyan-100">You advanced to Level {levelUpState.nextLevel}</p>
+                    <button
+                      type="button"
+                      onClick={handleContinueLevel}
+                      className="mt-4 rounded-lg bg-gradient-to-r from-[#ff8fca] via-[#ff965f] to-[#5ce9ff] px-5 py-2.5 text-sm font-bold uppercase tracking-[0.12em] text-[#10253c] transition hover:brightness-105 active:scale-[0.98]"
+                    >
+                      Continue
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
             {feedback && <p className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/85">{feedback}</p>}
           </div>

@@ -65,7 +65,7 @@ export function GameHud({
           disabled={submitBusy}
           className="rounded-lg bg-gradient-to-r from-[#ffd27a] to-[#ffe6a8] px-4 py-2.5 text-xs font-bold uppercase tracking-[0.12em] text-[#8a2e2b] shadow-sm transition hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-45"
         >
-          {submitBusy ? "Submitting..." : "Submit Score On-Chain"}
+          {submitBusy ? "Saving..." : "Save Score"}
         </button>
       </div>
 

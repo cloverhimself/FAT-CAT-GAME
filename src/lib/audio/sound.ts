@@ -8,13 +8,15 @@ type PlayOptions = {
   delayMs?: number;
 };
 
-const AMBIENT_NOTES = [174, 220, 261.63, 329.63];
+const MUSIC_TRACKS = ["/audio/Aura.mp3", "/audio/Lost Without My Squad.mp3"];
 
 export class SoundEngine {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
   private enabled = true;
-  private ambientTimer: number | null = null;
+  private volume = 0.55;
+  private music: HTMLAudioElement | null = null;
+  private trackIndex = 0;
 
   private ensureContext(): AudioContext | null {
     if (typeof window === "undefined") return null;
@@ -24,82 +26,142 @@ export class SoundEngine {
     if (!Ctx) return null;
     const context = new Ctx();
     const master = context.createGain();
-    master.gain.value = 0.35;
+    master.gain.value = this.volume;
     master.connect(context.destination);
     this.context = context;
     this.master = master;
     return context;
   }
 
+  private ensureMusic(): HTMLAudioElement | null {
+    if (typeof window === "undefined") return null;
+    if (this.music) return this.music;
+    const audio = new Audio(MUSIC_TRACKS[this.trackIndex]);
+    audio.preload = "auto";
+    audio.loop = false;
+    audio.volume = Math.max(0, Math.min(1, this.volume * 0.65));
+    audio.addEventListener("ended", () => {
+      this.trackIndex = (this.trackIndex + 1) % MUSIC_TRACKS.length;
+      audio.src = MUSIC_TRACKS[this.trackIndex];
+      if (this.enabled) {
+        void audio.play().catch(() => {});
+      }
+    });
+    this.music = audio;
+    return audio;
+  }
+
   unlock(): void {
     const ctx = this.ensureContext();
-    if (!ctx) return;
-    if (ctx.state === "suspended") {
+    if (ctx && ctx.state === "suspended") {
       void ctx.resume();
     }
   }
 
   setEnabled(next: boolean): void {
     this.enabled = next;
-    if (!next) this.stopAmbient();
-  }
-
-  startAmbient(): void {
-    if (!this.enabled || this.ambientTimer !== null) return;
-    this.unlock();
-    const playLoop = () => {
-      if (!this.enabled) return;
-      const base = AMBIENT_NOTES[Math.floor(Math.random() * AMBIENT_NOTES.length)];
-      this.playTone({ freq: base, durationMs: 850, volume: 0.02, type: "sine" });
-      this.playTone({ freq: base * 1.5, durationMs: 620, volume: 0.012, type: "triangle", delayMs: 180 });
-    };
-    playLoop();
-    this.ambientTimer = window.setInterval(playLoop, 2400);
-  }
-
-  stopAmbient(): void {
-    if (this.ambientTimer !== null) {
-      window.clearInterval(this.ambientTimer);
-      this.ambientTimer = null;
+    const music = this.ensureMusic();
+    if (music) {
+      music.muted = !next;
+      if (!next) music.pause();
     }
   }
 
+  isEnabled(): boolean {
+    return this.enabled;
+  }
+
+  setVolume(next: number): void {
+    const clamped = Math.max(0, Math.min(1, next));
+    this.volume = clamped;
+    if (this.master) {
+      this.master.gain.value = clamped;
+    }
+    const music = this.ensureMusic();
+    if (music) {
+      music.volume = Math.max(0, Math.min(1, clamped * 0.65));
+    }
+  }
+
+  getVolume(): number {
+    return this.volume;
+  }
+
+  async startMusic(): Promise<boolean> {
+    if (!this.enabled) return false;
+    this.unlock();
+    const music = this.ensureMusic();
+    if (!music) return false;
+    try {
+      await music.play();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  pauseMusic(): void {
+    const music = this.ensureMusic();
+    music?.pause();
+  }
+
+  isMusicPlaying(): boolean {
+    const music = this.ensureMusic();
+    return !!music && !music.paused && !music.ended;
+  }
+
   playClick(): void {
-    this.playTone({ freq: 520, durationMs: 55, volume: 0.03, type: "triangle" });
+    this.playTone({ freq: 520, durationMs: 52, volume: 0.03, type: "triangle" });
   }
 
-  playSwipe(): void {
-    this.playTone({ freq: 220, durationMs: 70, volume: 0.05, type: "sawtooth" });
-    this.playTone({ freq: 280, durationMs: 85, volume: 0.04, type: "triangle", delayMs: 35 });
+  playSwap(): void {
+    this.playTone({ freq: 230, durationMs: 70, volume: 0.045, type: "sawtooth" });
+    this.playTone({ freq: 295, durationMs: 85, volume: 0.035, type: "triangle", delayMs: 28 });
   }
 
-  playMatch(): void {
-    this.playTone({ freq: 470, durationMs: 110, volume: 0.05, type: "triangle" });
-    this.playTone({ freq: 620, durationMs: 140, volume: 0.04, type: "sine", delayMs: 45 });
+  playMatchPop(): void {
+    this.playTone({ freq: 470, durationMs: 100, volume: 0.05, type: "triangle" });
+    this.playTone({ freq: 620, durationMs: 130, volume: 0.04, type: "sine", delayMs: 38 });
   }
 
   playCombo(cascadeCount: number): void {
     const clamped = Math.max(2, Math.min(6, cascadeCount));
     for (let i = 0; i < clamped; i += 1) {
-      const freq = 410 + i * 90;
       this.playTone({
-        freq,
-        durationMs: 95 + i * 12,
-        volume: 0.03 + i * 0.005,
+        freq: 410 + i * 90,
+        durationMs: 90 + i * 11,
+        volume: 0.028 + i * 0.005,
         type: "square",
-        delayMs: i * 60,
+        delayMs: i * 58,
       });
     }
   }
 
-  playSuccess(): void {
-    this.playTone({ freq: 660, durationMs: 120, volume: 0.045, type: "triangle" });
-    this.playTone({ freq: 880, durationMs: 170, volume: 0.04, type: "sine", delayMs: 55 });
+  playInvalidSwap(): void {
+    this.playTone({ freq: 210, durationMs: 140, volume: 0.04, type: "square" });
+    this.playTone({ freq: 165, durationMs: 180, volume: 0.03, type: "sawtooth", delayMs: 56 });
   }
 
-  playError(): void {
-    this.playTone({ freq: 220, durationMs: 170, volume: 0.04, type: "square" });
-    this.playTone({ freq: 170, durationMs: 210, volume: 0.03, type: "sawtooth", delayMs: 65 });
+  playLevelUp(): void {
+    this.playTone({ freq: 580, durationMs: 100, volume: 0.04, type: "triangle" });
+    this.playTone({ freq: 760, durationMs: 130, volume: 0.04, type: "sine", delayMs: 45 });
+    this.playTone({ freq: 980, durationMs: 170, volume: 0.045, type: "sine", delayMs: 92 });
+  }
+
+  playGameOver(): void {
+    this.playTone({ freq: 260, durationMs: 160, volume: 0.04, type: "square" });
+    this.playTone({ freq: 200, durationMs: 210, volume: 0.035, type: "triangle", delayMs: 70 });
+    this.playTone({ freq: 150, durationMs: 260, volume: 0.03, type: "sawtooth", delayMs: 150 });
+  }
+
+  playScoreSubmitSuccess(): void {
+    this.playTone({ freq: 690, durationMs: 115, volume: 0.04, type: "triangle" });
+    this.playTone({ freq: 900, durationMs: 165, volume: 0.04, type: "sine", delayMs: 58 });
+  }
+
+  playCheckInSuccess(): void {
+    this.playTone({ freq: 500, durationMs: 95, volume: 0.04, type: "triangle" });
+    this.playTone({ freq: 680, durationMs: 130, volume: 0.035, type: "sine", delayMs: 42 });
   }
 
   private playTone({ freq, durationMs, volume = 0.04, type = "sine", delayMs = 0 }: PlayOptions): void {
@@ -122,7 +184,7 @@ export class SoundEngine {
     oscillator.connect(gain);
     gain.connect(master);
     oscillator.start(startTime);
-    oscillator.stop(endTime + 0.02);
+    oscillator.stop(endTime + 0.03);
   }
 }
 

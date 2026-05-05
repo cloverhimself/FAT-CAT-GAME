@@ -1,5 +1,4 @@
 import { ReactNode } from "react";
-import { SOLANA_CLUSTER } from "@/lib/config/network";
 import { SolanaTxState } from "@/lib/solana/txHelpers";
 import { FaWallet, FaDatabase, FaCheckCircle, FaTrophy } from "react-icons/fa";
 
@@ -10,17 +9,17 @@ type Props = {
   rpcReason: string | null;
   checkInState: SolanaTxState;
   submitState: SolanaTxState;
-  lastSignature: string | null;
+  lastRecordId: string | null;
   onRetryCheckIn: () => void;
   onRetrySubmit: () => void;
 };
 
 const txLabel: Record<SolanaTxState, string> = {
   idle: "Idle",
-  loading: "Processing transaction...",
-  success: "Transaction confirmed",
-  failed: "Transaction failed",
-  rejected: "Transaction rejected",
+  loading: "Saving...",
+  success: "Saved",
+  failed: "Save failed",
+  rejected: "Cancelled",
 };
 
 export function WalletStatusBanner({
@@ -30,7 +29,7 @@ export function WalletStatusBanner({
   rpcReason,
   checkInState,
   submitState,
-  lastSignature,
+  lastRecordId,
   onRetryCheckIn,
   onRetrySubmit,
 }: Props) {
@@ -69,16 +68,7 @@ export function WalletStatusBanner({
           </button>
         )}
       </div>
-      {lastSignature && (
-        <a
-          className="truncate text-xs text-neon underline"
-          href={`https://explorer.solana.com/tx/${lastSignature}?cluster=${SOLANA_CLUSTER}`}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Last tx: {lastSignature}
-        </a>
-      )}
+      {lastRecordId && <p className="truncate text-xs text-neon">Last record: {lastRecordId}</p>}
     </div>
   );
 }

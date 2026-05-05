@@ -27,13 +27,13 @@ export function OnboardingScreen({ username, onUsernameChange, onStart, canStart
       <div className="text-center">
         <p className="text-sm uppercase tracking-[0.2em] text-accent2">{MEME_TOKEN_NAME} Community Quest</p>
         <h1 className="mt-3 text-4xl font-black text-white">FAT CAT</h1>
-        <p className="mt-2 text-sm text-white/70">Connect wallet, pick username, and play for daily on-chain activity.</p>
+        <p className="mt-2 text-sm text-white/70">Connect wallet, pick username, and play for daily community activity.</p>
       </div>
 
       <div className="rounded-xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-white/85">
         <p className="font-semibold text-white">FAT CAT Quest</p>
         <p className="mt-1">
-          Play daily, match tiles, build streaks, submit your score on Solana, and climb the Fat Cats leaderboard. This app never moves user funds. Transactions only record check-ins and score submissions.
+          Play daily, match tiles, build streaks, save your score, and climb the Fat Cats leaderboard. This app never moves user funds. Wallet-linked records are used for check-ins and score submissions only.
         </p>
       </div>
 

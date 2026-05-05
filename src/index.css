@@ -134,6 +134,41 @@ h6 {
   animation: score-float 850ms ease forwards;
 }
 
+.levelup-overlay {
+  animation: levelup-fade-in 220ms ease-out;
+}
+
+.levelup-modal {
+  animation: levelup-modal-in 320ms cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+.levelup-spark {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 14px rgba(255, 255, 255, 0.95);
+  animation: levelup-sparkle 900ms ease-out infinite;
+}
+
+.levelup-spark-1 {
+  left: 18%;
+  top: 24%;
+}
+
+.levelup-spark-2 {
+  left: 72%;
+  top: 28%;
+  animation-delay: 160ms;
+}
+
+.levelup-spark-3 {
+  left: 48%;
+  top: 14%;
+  animation-delay: 300ms;
+}
+
 @keyframes tile-bounce {
   0% {
     transform: scale(1);
@@ -201,5 +236,43 @@ h6 {
   100% {
     opacity: 0;
     transform: translate(-50%, -22px) scale(1.04);
+  }
+}
+
+@keyframes levelup-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes levelup-modal-in {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.9);
+  }
+  65% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes levelup-sparkle {
+  0% {
+    opacity: 0;
+    transform: scale(0.45) translateY(6px);
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.1) translateY(-14px);
   }
 }

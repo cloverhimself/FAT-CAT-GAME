@@ -15,6 +15,7 @@ export class SoundEngine {
   private master: GainNode | null = null;
   private enabled = true;
   private volume = 0.55;
+  private sfxBoost = 2.6;
   private music: HTMLAudioElement | null = null;
   private trackIndex = 0;
 
@@ -111,17 +112,17 @@ export class SoundEngine {
   }
 
   playClick(): void {
-    this.playTone({ freq: 520, durationMs: 52, volume: 0.03, type: "triangle" });
+    this.playTone({ freq: 520, durationMs: 52, volume: 0.06, type: "triangle" });
   }
 
   playSwap(): void {
-    this.playTone({ freq: 230, durationMs: 70, volume: 0.045, type: "sawtooth" });
-    this.playTone({ freq: 295, durationMs: 85, volume: 0.035, type: "triangle", delayMs: 28 });
+    this.playTone({ freq: 230, durationMs: 70, volume: 0.08, type: "sawtooth" });
+    this.playTone({ freq: 295, durationMs: 85, volume: 0.065, type: "triangle", delayMs: 28 });
   }
 
   playMatchPop(): void {
-    this.playTone({ freq: 470, durationMs: 100, volume: 0.05, type: "triangle" });
-    this.playTone({ freq: 620, durationMs: 130, volume: 0.04, type: "sine", delayMs: 38 });
+    this.playTone({ freq: 470, durationMs: 100, volume: 0.085, type: "triangle" });
+    this.playTone({ freq: 620, durationMs: 130, volume: 0.075, type: "sine", delayMs: 38 });
   }
 
   playCombo(cascadeCount: number): void {
@@ -130,7 +131,7 @@ export class SoundEngine {
       this.playTone({
         freq: 410 + i * 90,
         durationMs: 90 + i * 11,
-        volume: 0.028 + i * 0.005,
+        volume: 0.055 + i * 0.006,
         type: "square",
         delayMs: i * 58,
       });
@@ -138,30 +139,30 @@ export class SoundEngine {
   }
 
   playInvalidSwap(): void {
-    this.playTone({ freq: 210, durationMs: 140, volume: 0.04, type: "square" });
-    this.playTone({ freq: 165, durationMs: 180, volume: 0.03, type: "sawtooth", delayMs: 56 });
+    this.playTone({ freq: 210, durationMs: 140, volume: 0.08, type: "square" });
+    this.playTone({ freq: 165, durationMs: 180, volume: 0.07, type: "sawtooth", delayMs: 56 });
   }
 
   playLevelUp(): void {
-    this.playTone({ freq: 580, durationMs: 100, volume: 0.04, type: "triangle" });
-    this.playTone({ freq: 760, durationMs: 130, volume: 0.04, type: "sine", delayMs: 45 });
-    this.playTone({ freq: 980, durationMs: 170, volume: 0.045, type: "sine", delayMs: 92 });
+    this.playTone({ freq: 580, durationMs: 100, volume: 0.09, type: "triangle" });
+    this.playTone({ freq: 760, durationMs: 130, volume: 0.09, type: "sine", delayMs: 45 });
+    this.playTone({ freq: 980, durationMs: 170, volume: 0.095, type: "sine", delayMs: 92 });
   }
 
   playGameOver(): void {
-    this.playTone({ freq: 260, durationMs: 160, volume: 0.04, type: "square" });
-    this.playTone({ freq: 200, durationMs: 210, volume: 0.035, type: "triangle", delayMs: 70 });
-    this.playTone({ freq: 150, durationMs: 260, volume: 0.03, type: "sawtooth", delayMs: 150 });
+    this.playTone({ freq: 260, durationMs: 160, volume: 0.085, type: "square" });
+    this.playTone({ freq: 200, durationMs: 210, volume: 0.08, type: "triangle", delayMs: 70 });
+    this.playTone({ freq: 150, durationMs: 260, volume: 0.075, type: "sawtooth", delayMs: 150 });
   }
 
   playScoreSubmitSuccess(): void {
-    this.playTone({ freq: 690, durationMs: 115, volume: 0.04, type: "triangle" });
-    this.playTone({ freq: 900, durationMs: 165, volume: 0.04, type: "sine", delayMs: 58 });
+    this.playTone({ freq: 690, durationMs: 115, volume: 0.085, type: "triangle" });
+    this.playTone({ freq: 900, durationMs: 165, volume: 0.085, type: "sine", delayMs: 58 });
   }
 
   playCheckInSuccess(): void {
-    this.playTone({ freq: 500, durationMs: 95, volume: 0.04, type: "triangle" });
-    this.playTone({ freq: 680, durationMs: 130, volume: 0.035, type: "sine", delayMs: 42 });
+    this.playTone({ freq: 500, durationMs: 95, volume: 0.08, type: "triangle" });
+    this.playTone({ freq: 680, durationMs: 130, volume: 0.075, type: "sine", delayMs: 42 });
   }
 
   private playTone({ freq, durationMs, volume = 0.04, type = "sine", delayMs = 0 }: PlayOptions): void {
@@ -177,8 +178,9 @@ export class SoundEngine {
 
     oscillator.type = type;
     oscillator.frequency.setValueAtTime(freq, startTime);
+    const boostedVolume = Math.min(0.26, Math.max(0.018, volume * this.sfxBoost));
     gain.gain.setValueAtTime(0.0001, startTime);
-    gain.gain.exponentialRampToValueAtTime(volume, startTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(boostedVolume, startTime + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, endTime);
 
     oscillator.connect(gain);

@@ -133,6 +133,7 @@ function AppShell() {
   const [submitState, setSubmitState] = useState<SolanaTxState>("idle");
   const [lastRecordId, setLastRecordId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
+  const [startBusy, setStartBusy] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(() => {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("fat-cat-sound") !== "off";
@@ -302,7 +303,10 @@ function AppShell() {
       };
 
     try {
+      setStartBusy(true);
+      setFeedback("Verifying wallet session...");
       await ensureWalletSession(wallet);
+      setFeedback("Loading player profile...");
       const nextProgress = await upsertUser({ wallet: walletKey, username: clean, progress: base });
       setProgress(nextProgress);
       setUsername(clean);
@@ -320,6 +324,8 @@ function AppShell() {
     } catch (error) {
       sound.playGameOver();
       setFeedback(toErrorMessage(error));
+    } finally {
+      setStartBusy(false);
     }
   };
 
@@ -723,6 +729,8 @@ function AppShell() {
           onStart={() => void startGame()}
           canStart={canStart}
           rpcHealthy={rpcHealthy}
+          startBusy={startBusy}
+          feedback={feedback}
         />
       ) : (
         <div className="grid items-start gap-4 lg:grid-cols-[1.1fr_0.9fr]">

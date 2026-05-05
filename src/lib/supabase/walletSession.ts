@@ -86,6 +86,12 @@ export async function ensureWalletSession(wallet: WalletContextState): Promise<v
 
   if (!response.ok) {
     const text = await response.text();
+    if (response.status === 404) {
+      throw new Error("Supabase wallet auth function is not deployed yet.");
+    }
+    if (response.status === 401) {
+      throw new Error("Wallet signature verification failed.");
+    }
     throw new Error(text || "Wallet authentication failed.");
   }
 

@@ -87,6 +87,7 @@ export type Database = {
           game_session_id: string;
           tx_signature: string;
           suspicious_score: boolean;
+          suspicious_reason: string | null;
           reviewed: boolean;
           created_at: string;
         };
@@ -100,6 +101,7 @@ export type Database = {
           game_session_id: string;
           tx_signature: string;
           suspicious_score?: boolean;
+          suspicious_reason?: string | null;
           reviewed?: boolean;
           created_at?: string;
         };
@@ -113,6 +115,7 @@ export type Database = {
           game_session_id?: string;
           tx_signature?: string;
           suspicious_score?: boolean;
+          suspicious_reason?: string | null;
           reviewed?: boolean;
           created_at?: string;
         };

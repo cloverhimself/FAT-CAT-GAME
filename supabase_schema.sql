@@ -41,12 +41,15 @@ create table if not exists public.scores (
   game_session_id text not null unique,
   tx_signature text not null unique,
   suspicious_score boolean not null default false,
+  suspicious_reason text,
   reviewed boolean not null default false,
   created_at timestamptz not null default now(),
   constraint scores_wallet_format check (wallet_address ~ '^[1-9A-HJ-NP-Za-km-z]{32,44}$'),
   constraint scores_username_format check (username ~ '^[A-Za-z0-9_-]{3,18}$'),
   constraint scores_user_fk foreign key (wallet_address) references public.users(wallet_address) on update cascade on delete cascade
 );
+
+alter table public.scores add column if not exists suspicious_reason text;
 
 create index if not exists idx_users_best_score on public.users (best_score desc);
 create index if not exists idx_users_total_xp on public.users (total_xp desc);
@@ -83,11 +86,25 @@ for select using (true);
 
 drop policy if exists users_insert_public on public.users;
 create policy users_insert_public on public.users
-for insert with check (true);
+for insert with check (
+  wallet_address ~ '^[1-9A-HJ-NP-Za-km-z]{32,44}$'
+  and username ~ '^[A-Za-z0-9_-]{3,18}$'
+  and total_xp >= 0
+  and current_streak >= 0
+  and best_score >= 0
+  and total_checkins >= 0
+);
 
 drop policy if exists users_update_public on public.users;
 create policy users_update_public on public.users
-for update using (true) with check (true);
+for update using (true) with check (
+  wallet_address ~ '^[1-9A-HJ-NP-Za-km-z]{32,44}$'
+  and username ~ '^[A-Za-z0-9_-]{3,18}$'
+  and total_xp >= 0
+  and current_streak >= 0
+  and best_score >= 0
+  and total_checkins >= 0
+);
 
 drop policy if exists checkins_select_public on public.checkins;
 create policy checkins_select_public on public.checkins
@@ -95,7 +112,11 @@ for select using (true);
 
 drop policy if exists checkins_insert_public on public.checkins;
 create policy checkins_insert_public on public.checkins
-for insert with check (true);
+for insert with check (
+  wallet_address ~ '^[1-9A-HJ-NP-Za-km-z]{32,44}$'
+  and username ~ '^[A-Za-z0-9_-]{3,18}$'
+  and xp_awarded >= 0 and xp_awarded <= 1000
+);
 
 drop policy if exists scores_select_public on public.scores;
 create policy scores_select_public on public.scores
@@ -103,4 +124,10 @@ for select using (true);
 
 drop policy if exists scores_insert_public on public.scores;
 create policy scores_insert_public on public.scores
-for insert with check (true);
+for insert with check (
+  wallet_address ~ '^[1-9A-HJ-NP-Za-km-z]{32,44}$'
+  and username ~ '^[A-Za-z0-9_-]{3,18}$'
+  and score >= 0 and score <= 1000000
+  and level >= 1 and level <= 1000
+  and moves_used >= 0 and moves_used <= 10000
+);

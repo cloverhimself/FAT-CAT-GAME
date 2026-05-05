@@ -7,7 +7,7 @@ import { GameBoard } from "@/components/GameBoard";
 import { GameHud } from "@/components/GameHud";
 import { LeaderboardPanel } from "@/components/LeaderboardPanel";
 import { SocialLinks } from "@/components/SocialLinks";
-import { clearAndDrop, createBoard, scoreForMatch, swapTiles } from "@/lib/game/gameLogic";
+import { clearAndDrop, createBoard, scoreForMatch } from "@/lib/game/gameLogic";
 import { Coord } from "@/lib/game/types";
 import { findMatches } from "@/lib/game/tileMatching";
 import { getNetworkLabel } from "@/lib/config/network";
@@ -25,10 +25,20 @@ import {
   saveScoreSubmission,
   upsertUser,
 } from "@/lib/supabase/gameData";
+import { hasSupabaseEnv } from "@/lib/supabase/client";
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-const MAX_MOVES = 30;
 const MAX_SCORE = 1_000_000;
+const MAX_LEVEL = 20;
+const MIN_SESSION_MS = 25_000;
+
+function targetForLevel(level: number): number {
+  return 350 + Math.floor(level * level * 38);
+}
+
+function movesForLevel(level: number): number {
+  return Math.max(9, 22 - Math.floor(level * 0.55));
+}
 
 function utcYesterdayOf(day: string): string {
   const date = new Date(`${day}T00:00:00.000Z`);
@@ -50,8 +60,7 @@ function loadSubmittedSessions(wallet: string): Set<string> {
   const raw = localStorage.getItem(getSubmittedSessionKey(wallet));
   if (!raw) return new Set();
   try {
-    const parsed = JSON.parse(raw) as string[];
-    return new Set(parsed);
+    return new Set(JSON.parse(raw) as string[]);
   } catch {
     return new Set();
   }
@@ -66,6 +75,13 @@ function isValidScore(score: number): boolean {
   return Number.isInteger(score) && score >= 0 && score <= MAX_SCORE;
 }
 
+type SessionMeta = {
+  id: string;
+  startedAt: number;
+  endedAt: number | null;
+  movesUsed: number;
+};
+
 function AppShell() {
   const { connection } = useConnection();
   const wallet = useWallet();
@@ -74,7 +90,7 @@ function AppShell() {
   const [username, setUsername] = useState("");
   const [started, setStarted] = useState(false);
 
-  const [board, setBoard] = useState<number[][]>(() => createBoard());
+  const [board, setBoard] = useState<number[][]>(() => createBoard(1));
   const [clearingSet, setClearingSet] = useState<Set<string>>(new Set());
   const [isResolving, setIsResolving] = useState(false);
   const [pendingSwap, setPendingSwap] = useState<{ a: Coord; b: Coord } | null>(null);
@@ -83,8 +99,16 @@ function AppShell() {
 
   const [score, setScore] = useState(0);
   const [level, setLevel] = useState(1);
-  const [movesRemaining, setMovesRemaining] = useState(MAX_MOVES);
-  const [sessionId, setSessionId] = useState(crypto.randomUUID());
+  const [levelScore, setLevelScore] = useState(0);
+  const [targetScore, setTargetScore] = useState(targetForLevel(1));
+  const [movesRemaining, setMovesRemaining] = useState(movesForLevel(1));
+  const [levelFailed, setLevelFailed] = useState(false);
+  const [sessionMeta, setSessionMeta] = useState<SessionMeta>({
+    id: crypto.randomUUID(),
+    startedAt: Date.now(),
+    endedAt: null,
+    movesUsed: 0,
+  });
 
   const [progress, setProgress] = useState<UserProgress | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
@@ -98,6 +122,7 @@ function AppShell() {
   const [feedback, setFeedback] = useState("");
 
   const refreshLeaderboard = async () => {
+    if (!hasSupabaseEnv) return;
     try {
       const rows = await fetchLeaderboard();
       setLeaderboard(rows);
@@ -107,11 +132,15 @@ function AppShell() {
   };
 
   useEffect(() => {
+    if (!hasSupabaseEnv) {
+      setFeedback("Supabase env missing. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local.");
+      return;
+    }
     void refreshLeaderboard();
   }, []);
 
   useEffect(() => {
-    if (!wallet.publicKey) {
+    if (!wallet.publicKey || !hasSupabaseEnv) {
       setProgress(null);
       setUsername("");
       return;
@@ -155,12 +184,25 @@ function AppShell() {
     };
   }, [connection]);
 
-  const canStart = wallet.connected && usernameInput.trim().length >= 3 && rpcHealthy;
+  const canStart = wallet.connected && usernameInput.trim().length >= 3 && rpcHealthy && hasSupabaseEnv;
   const canCheckIn = !!progress && !isSameDay(progress.lastCheckInDay) && checkInState !== "loading";
-  const boardLocked = isResolving || movesRemaining <= 0 || pendingSwap !== null;
+  const boardLocked = isResolving || levelFailed || pendingSwap !== null;
+
+  const resetRunForLevel = (nextLevel: number) => {
+    setBoard(createBoard(nextLevel));
+    setLevel(nextLevel);
+    setLevelScore(0);
+    setTargetScore(targetForLevel(nextLevel));
+    setMovesRemaining(movesForLevel(nextLevel));
+    setLevelFailed(false);
+  };
 
   const startGame = async () => {
     if (!wallet.publicKey || !canStart) return;
+    if (!hasSupabaseEnv) {
+      setFeedback("Supabase is required before starting. Configure .env.local and restart.");
+      return;
+    }
 
     const clean = sanitizeUsername(usernameInput.trim());
     if (clean.length < 3) {
@@ -180,29 +222,24 @@ function AppShell() {
         bestScore: 0,
       };
 
-    let nextProgress = { ...base, username: clean };
     try {
-      nextProgress = await upsertUser({ wallet: walletKey, username: clean, progress: nextProgress });
+      const nextProgress = await upsertUser({ wallet: walletKey, username: clean, progress: base });
+      setProgress(nextProgress);
+      setUsername(clean);
+      setScore(0);
+      resetRunForLevel(1);
+      setSessionMeta({ id: crypto.randomUUID(), startedAt: Date.now(), endedAt: null, movesUsed: 0 });
+      setStarted(true);
+      setSubmitState("idle");
+      setPendingSwap(null);
+      setScorePop(null);
+      setFeedback("");
     } catch (error) {
       setFeedback(toErrorMessage(error));
-      return;
     }
-
-    setProgress(nextProgress);
-    setUsername(clean);
-    setBoard(createBoard());
-    setScore(0);
-    setLevel(1);
-    setMovesRemaining(MAX_MOVES);
-    setSessionId(crypto.randomUUID());
-    setStarted(true);
-    setSubmitState("idle");
-    setPendingSwap(null);
-    setScorePop(null);
-    setFeedback("");
   };
 
-  const resolveMatches = async (initialBoard: number[][]) => {
+  const resolveMatches = async (initialBoard: number[][]): Promise<{ hadMatch: boolean; gained: number }> => {
     let next = initialBoard;
     let totalMatched = 0;
     let cascadeSteps = 0;
@@ -214,64 +251,97 @@ function AppShell() {
       cascadeSteps += 1;
       totalMatched += result.matchedSet.size;
       setClearingSet(new Set(result.matchedSet));
-      await delay(160);
+      await delay(150);
 
-      next = clearAndDrop(next, result.matchedSet);
+      next = clearAndDrop(next, result.matchedSet, level);
       setBoard(next);
       setClearingSet(new Set());
-      await delay(110);
+      await delay(105);
     }
 
-    if (totalMatched > 0) {
-      const gained = scoreForMatch(totalMatched, cascadeSteps);
-      const popId = Date.now();
-      setMatchFxTick((prev) => prev + 1);
-      setScorePop({ id: popId, text: `+${gained}` });
-      setTimeout(() => {
-        setScorePop((current) => (current && current.id === popId ? null : current));
-      }, 900);
+    if (totalMatched <= 0) return { hadMatch: false, gained: 0 };
 
-      setScore((prev) => {
-        const updated = Math.min(prev + gained, MAX_SCORE);
-        const nextLevel = Math.floor(updated / 500) + 1;
-        if (nextLevel > level) {
-          setMovesRemaining((moves) => moves + (nextLevel - level) * 5);
-          setLevel(nextLevel);
-        }
-        return updated;
-      });
-    }
+    const gained = scoreForMatch(totalMatched, cascadeSteps);
+    const popId = Date.now();
+    setMatchFxTick((prev) => prev + 1);
+    setScorePop({ id: popId, text: `+${gained}` });
+    setTimeout(() => {
+      setScorePop((current) => (current && current.id === popId ? null : current));
+    }, 900);
 
-    return totalMatched > 0;
+    return { hadMatch: true, gained };
   };
 
   const handleSwap = async (a: Coord, b: Coord) => {
     if (boardLocked) return;
 
     const original = board;
-    setMovesRemaining((prev) => Math.max(0, prev - 1));
+    const nextMovesLeft = Math.max(0, movesRemaining - 1);
+    setMovesRemaining(nextMovesLeft);
+    setSessionMeta((prev) => ({ ...prev, movesUsed: prev.movesUsed + 1 }));
+
     setPendingSwap({ a, b });
     await delay(130);
-    const swapped = swapTiles(board, a, b);
+
+    const swapped = original.map((row) => [...row]);
+    const temp = swapped[a.row][a.col];
+    swapped[a.row][a.col] = swapped[b.row][b.col];
+    swapped[b.row][b.col] = temp;
     setBoard(swapped);
     setPendingSwap(null);
     setIsResolving(true);
 
     try {
-      const hadMatch = await resolveMatches(swapped);
+      const { hadMatch, gained } = await resolveMatches(swapped);
+
       if (!hadMatch) {
         setPendingSwap({ a: b, b: a });
         await delay(130);
         setBoard(original);
         setPendingSwap(null);
+      } else {
+        const newTotal = Math.min(score + gained, MAX_SCORE);
+        const newLevelScore = levelScore + gained;
+        setScore(newTotal);
+
+        if (newLevelScore >= targetScore) {
+          if (level >= MAX_LEVEL) {
+            setLevelScore(targetScore);
+            setFeedback("Max level reached. Submit your run.");
+            setLevelFailed(true);
+            setSessionMeta((prev) => ({ ...prev, endedAt: Date.now() }));
+          } else {
+            const nextLevel = level + 1;
+            setFeedback(`Level ${level} cleared. Welcome to level ${nextLevel}.`);
+            resetRunForLevel(nextLevel);
+          }
+        } else {
+          setLevelScore(newLevelScore);
+        }
+      }
+
+      if (nextMovesLeft <= 0 && levelScore + (hadMatch ? gained : 0) < targetScore) {
+        setLevelFailed(true);
+        setSessionMeta((prev) => ({ ...prev, endedAt: Date.now() }));
+        setFeedback("Level failed. Moves exhausted before target score. Try Again.");
       }
     } finally {
       setIsResolving(false);
     }
   };
 
+  const handleTryAgain = () => {
+    const sameLevel = level;
+    setScore(0);
+    resetRunForLevel(sameLevel);
+    setSessionMeta({ id: crypto.randomUUID(), startedAt: Date.now(), endedAt: null, movesUsed: 0 });
+    setPendingSwap(null);
+    setSubmitState("idle");
+    setFeedback("New run started.");
+  };
+
   const handleCheckIn = async () => {
-    if (!wallet.publicKey || !progress) return;
+    if (!wallet.publicKey || !progress || !hasSupabaseEnv) return;
     const walletKey = wallet.publicKey.toBase58();
     const cleanUsername = sanitizeUsername(progress.username || username || usernameInput);
     if (cleanUsername.length < 3) {
@@ -311,6 +381,7 @@ function AppShell() {
         xpAwarded: xpGain,
         nextProgress,
       });
+
       setProgress(nextProgress);
       setUsername(cleanUsername);
       setCheckInState("success");
@@ -329,9 +400,10 @@ function AppShell() {
   };
 
   const handleScoreSubmit = async () => {
-    if (!wallet.publicKey || !progress) return;
+    if (!wallet.publicKey || !progress || !hasSupabaseEnv) return;
     const walletKey = wallet.publicKey.toBase58();
     const cleanUsername = sanitizeUsername(progress.username || username || usernameInput);
+
     if (cleanUsername.length < 3) {
       setSubmitState("failed");
       setFeedback("Username must be at least 3 valid characters.");
@@ -344,14 +416,41 @@ function AppShell() {
       return;
     }
 
+    if (!levelFailed && level < MAX_LEVEL) {
+      setSubmitState("failed");
+      setFeedback("Complete a valid session before submitting score.");
+      return;
+    }
+
+    const endedAt = sessionMeta.endedAt ?? Date.now();
+    const sessionDuration = endedAt - sessionMeta.startedAt;
+    if (sessionDuration < MIN_SESSION_MS) {
+      setSubmitState("failed");
+      setFeedback("Session too short. Anti-cheat blocked this score.");
+      return;
+    }
+
+    if (sessionMeta.movesUsed < 1 || sessionMeta.movesUsed > 10000) {
+      setSubmitState("failed");
+      setFeedback("Invalid moves used for this session.");
+      return;
+    }
+
+    const impossibleScoreLimit = sessionMeta.movesUsed * 520 + level * 2400;
+    if (score > impossibleScoreLimit) {
+      setSubmitState("failed");
+      setFeedback("Impossible score detected for this session.");
+      return;
+    }
+
     try {
       setSubmitState("loading");
       setFeedback("");
 
       const submittedSessions = loadSubmittedSessions(walletKey);
-      if (submittedSessions.has(sessionId) || (await hasSubmittedSession(sessionId))) {
+      if (submittedSessions.has(sessionMeta.id) || (await hasSubmittedSession(sessionMeta.id))) {
         setSubmitState("failed");
-        setFeedback("This session score is already submitted.");
+        setFeedback("This game session score is already submitted.");
         return;
       }
 
@@ -361,36 +460,42 @@ function AppShell() {
         username: cleanUsername,
         score,
         level,
-        sessionId,
+        sessionId: sessionMeta.id,
       });
 
-      submittedSessions.add(sessionId);
+      submittedSessions.add(sessionMeta.id);
       saveSubmittedSessions(walletKey, submittedSessions);
 
-      const xpFromRun = Math.floor(score / 25);
+      const xpFromRun = Math.floor(score / 35);
       const nextProgress: UserProgress = {
         ...progress,
         bestScore: Math.max(progress.bestScore, score),
         totalXP: progress.totalXP + xpFromRun,
       };
-      const suspiciousScore = score > 200000 || level > 500 || movesRemaining < 0;
+
+      const suspiciousReasons: string[] = [];
+      if (sessionDuration < 45_000) suspiciousReasons.push("short_session");
+      if (score > sessionMeta.movesUsed * 400) suspiciousReasons.push("high_score_density");
+      const suspiciousScore = suspiciousReasons.length > 0;
+
       await saveScoreSubmission({
         wallet: walletKey,
         username: cleanUsername,
         score,
         level,
-        movesUsed: MAX_MOVES - movesRemaining,
-        gameSessionId: sessionId,
+        movesUsed: sessionMeta.movesUsed,
+        gameSessionId: sessionMeta.id,
         txSignature: result.signature,
         suspiciousScore,
+        suspiciousReason: suspiciousReasons.length ? suspiciousReasons.join(",") : null,
         nextProgress,
       });
+
       setProgress(nextProgress);
       setUsername(cleanUsername);
-
       setSubmitState("success");
       setLastSignature(result.signature);
-      setFeedback(`Score submitted on-chain. +${xpFromRun} XP`);
+      setFeedback(`Score submitted on-chain. +${xpFromRun} XP. Manual rewards review only.`);
       await refreshLeaderboard();
     } catch (error) {
       setSubmitState(classifyTxError(error));
@@ -422,7 +527,7 @@ function AppShell() {
           </div>
           <p className="rounded-full border border-white/35 bg-white/15 px-3 py-1 text-xs text-white">Badge: {badge}</p>
         </div>
-        <p className="mt-2 text-xs text-white/65">This app never moves user funds. Transactions only store memo records for check-ins and score submissions.</p>
+        <p className="mt-2 text-xs text-white/65">This app never moves your SOL or tokens. Wallet transactions only record your check-in or score submission.</p>
       </header>
 
       <WalletStatusBanner
@@ -437,11 +542,18 @@ function AppShell() {
         onRetrySubmit={handleRetrySubmit}
       />
 
+      {!hasSupabaseEnv && (
+        <div className="rounded-2xl border border-red-300/40 bg-red-500/15 px-4 py-3 text-sm text-red-100">
+          Supabase is not configured. Add <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> to
+          <code> .env.local</code>, then restart.
+        </div>
+      )}
+
       {!started ? (
         <OnboardingScreen
           username={usernameInput}
           onUsernameChange={(value) => setUsernameInput(sanitizeUsername(value))}
-          onStart={startGame}
+          onStart={() => void startGame()}
           canStart={canStart}
           rpcHealthy={rpcHealthy}
         />
@@ -456,12 +568,15 @@ function AppShell() {
               totalXP={progress?.totalXP ?? 0}
               totalCheckIns={progress?.totalCheckIns ?? 0}
               movesRemaining={movesRemaining}
+              levelScore={levelScore}
+              targetScore={targetScore}
               onCheckIn={handleCheckIn}
               onSubmitScore={handleScoreSubmit}
               canCheckIn={canCheckIn}
               checkInBusy={checkInState === "loading"}
               submitBusy={submitState === "loading"}
-              outOfMoves={movesRemaining <= 0}
+              outOfMoves={levelFailed}
+              onTryAgain={handleTryAgain}
             />
 
             <div className="relative">

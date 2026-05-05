@@ -1,6 +1,6 @@
 import { LeaderboardEntry } from "@/lib/state/leaderboard";
 import { toUtcDay } from "@/lib/solana/dailyCheckIn";
-import { supabase } from "./client";
+import { getSupabase } from "./client";
 
 export type UserProgress = {
   username: string;
@@ -33,6 +33,7 @@ export function sanitizeUsername(input: string): string {
 }
 
 export async function fetchUserProgress(wallet: string): Promise<UserProgress> {
+  const supabase = getSupabase();
   const [userRes, checkinRes] = await Promise.all([
     supabase.from("users").select("wallet_address,username,total_xp,current_streak,best_score,total_checkins").eq("wallet_address", wallet).maybeSingle(),
     supabase.from("checkins").select("checkin_date").eq("wallet_address", wallet).order("checkin_date", { ascending: false }).limit(1).maybeSingle(),
@@ -55,6 +56,7 @@ export async function fetchUserProgress(wallet: string): Promise<UserProgress> {
 }
 
 export async function upsertUser(args: { wallet: string; username: string; progress?: Partial<UserProgress> }): Promise<UserProgress> {
+  const supabase = getSupabase();
   const clean = sanitizeUsername(args.username);
   if (clean.length < 3) throw new Error("Username must be at least 3 valid characters.");
 
@@ -81,6 +83,7 @@ export async function saveDailyCheckin(args: {
   xpAwarded: number;
   nextProgress: UserProgress;
 }): Promise<void> {
+  const supabase = getSupabase();
   const checkinDate = args.checkinDate ?? toUtcDay();
   const { error: checkinError } = await supabase.from("checkins").insert({
     wallet_address: args.wallet,
@@ -121,8 +124,10 @@ export async function saveScoreSubmission(args: {
   gameSessionId: string;
   txSignature: string;
   suspiciousScore: boolean;
+  suspiciousReason: string | null;
   nextProgress: UserProgress;
 }): Promise<void> {
+  const supabase = getSupabase();
   const { error: scoreError } = await supabase.from("scores").insert({
     wallet_address: args.wallet,
     username: sanitizeUsername(args.username),
@@ -132,6 +137,7 @@ export async function saveScoreSubmission(args: {
     game_session_id: args.gameSessionId,
     tx_signature: args.txSignature,
     suspicious_score: args.suspiciousScore,
+    suspicious_reason: args.suspiciousReason,
     reviewed: false,
   });
 
@@ -158,6 +164,7 @@ export async function saveScoreSubmission(args: {
 }
 
 export async function fetchLeaderboard(): Promise<LeaderboardEntry[]> {
+  const supabase = getSupabase();
   const [usersRes, scoresRes] = await Promise.all([
     supabase.from("users").select("wallet_address,username,total_xp,current_streak,total_checkins,best_score,updated_at").order("best_score", { ascending: false }).limit(100),
     supabase.from("scores").select("wallet_address,level,created_at").order("created_at", { ascending: false }).limit(500),
@@ -193,6 +200,7 @@ export async function fetchLeaderboard(): Promise<LeaderboardEntry[]> {
 }
 
 export async function hasSubmittedSession(gameSessionId: string): Promise<boolean> {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from("scores")
     .select("id")

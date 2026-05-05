@@ -1,22 +1,29 @@
 import { GRID_SIZE, TILE_KIND_COUNT, Coord, TileValue, CascadeResult } from "./types";
 import { findMatches, isAdjacent } from "./tileMatching";
 
-const randomTile = (): TileValue => Math.floor(Math.random() * TILE_KIND_COUNT);
+const randomTile = (kindCount: number): TileValue => Math.floor(Math.random() * kindCount);
+
+export function tileKindCountForLevel(level: number): number {
+  if (level >= 12) return Math.min(TILE_KIND_COUNT + 2, 8);
+  if (level >= 8) return Math.min(TILE_KIND_COUNT + 1, 7);
+  return TILE_KIND_COUNT;
+}
 
 export function cloneBoard(board: TileValue[][]): TileValue[][] {
   return board.map((row) => [...row]);
 }
 
-export function createBoard(): TileValue[][] {
+export function createBoard(level = 1): TileValue[][] {
+  const kindCount = tileKindCountForLevel(level);
   const board: TileValue[][] = Array.from({ length: GRID_SIZE }, () =>
-    Array.from({ length: GRID_SIZE }, () => randomTile()),
+    Array.from({ length: GRID_SIZE }, () => randomTile(kindCount)),
   );
 
   while (findMatches(board).groups.length > 0) {
     const { matchedSet } = findMatches(board);
     matchedSet.forEach((key) => {
       const [row, col] = key.split(":").map(Number);
-      board[row][col] = randomTile();
+      board[row][col] = randomTile(kindCount);
     });
   }
 
@@ -37,8 +44,9 @@ export function canSwap(board: TileValue[][], a: Coord, b: Coord): boolean {
   return findMatches(swapped).groups.length > 0;
 }
 
-export function clearAndDrop(board: TileValue[][], matchedSet: Set<string>): TileValue[][] {
+export function clearAndDrop(board: TileValue[][], matchedSet: Set<string>, level = 1): TileValue[][] {
   const next = cloneBoard(board);
+  const kindCount = tileKindCountForLevel(level);
 
   for (let col = 0; col < GRID_SIZE; col += 1) {
     const kept: TileValue[] = [];
@@ -50,7 +58,7 @@ export function clearAndDrop(board: TileValue[][], matchedSet: Set<string>): Til
     }
 
     while (kept.length < GRID_SIZE) {
-      kept.push(randomTile());
+      kept.push(randomTile(kindCount));
     }
 
     for (let row = GRID_SIZE - 1, idx = 0; row >= 0; row -= 1, idx += 1) {
@@ -80,6 +88,6 @@ export function runCascade(board: TileValue[][]): CascadeResult {
 
 export function scoreForMatch(matchCount: number, cascadeSteps: number): number {
   const base = matchCount * 10;
-  const cascadeBonus = Math.max(0, cascadeSteps - 1) * 25;
-  return base + cascadeBonus;
+  const skilledMultiplier = cascadeSteps >= 2 ? 1 + Math.min((cascadeSteps - 1) * 0.2, 0.8) : 1;
+  return Math.floor(base * skilledMultiplier);
 }

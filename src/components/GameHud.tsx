@@ -2,6 +2,8 @@ type Props = {
   username: string;
   score: number;
   level: number;
+  levelScore: number;
+  targetScore: number;
   streak: number;
   totalXP: number;
   totalCheckIns: number;
@@ -12,12 +14,15 @@ type Props = {
   checkInBusy: boolean;
   submitBusy: boolean;
   outOfMoves: boolean;
+  onTryAgain: () => void;
 };
 
 export function GameHud({
   username,
   score,
   level,
+  levelScore,
+  targetScore,
   streak,
   totalXP,
   totalCheckIns,
@@ -28,6 +33,7 @@ export function GameHud({
   checkInBusy,
   submitBusy,
   outOfMoves,
+  onTryAgain,
 }: Props) {
   return (
     <section className="glass-panel grid gap-3 rounded-2xl p-4">
@@ -36,6 +42,8 @@ export function GameHud({
         <div className="rounded-lg bg-white/15 p-2 backdrop-blur">Score: {score}</div>
         <div className="rounded-lg bg-white/15 p-2 backdrop-blur">Level: {level}</div>
         <div className="rounded-lg bg-white/15 p-2 backdrop-blur">Moves: {movesRemaining}</div>
+        <div className="rounded-lg bg-white/15 p-2 backdrop-blur">Target: {targetScore}</div>
+        <div className="rounded-lg bg-white/15 p-2 backdrop-blur">Level Score: {levelScore}</div>
         <div className="rounded-lg bg-white/15 p-2 backdrop-blur">Streak: {streak} days</div>
         <div className="rounded-lg bg-white/15 p-2 backdrop-blur">XP: {totalXP}</div>
         <div className="rounded-lg bg-white/15 p-2 backdrop-blur">Check-ins: {totalCheckIns}</div>
@@ -62,6 +70,15 @@ export function GameHud({
       </div>
 
       {outOfMoves && <p className="text-xs text-accent2">Out of moves. Submit this run or restart from onboarding.</p>}
+      {outOfMoves && (
+        <button
+          type="button"
+          onClick={onTryAgain}
+          className="w-fit rounded-lg bg-gradient-to-r from-[#7ee4ff] to-[#9effd5] px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-[#11344a] transition hover:brightness-105 active:scale-[0.98]"
+        >
+          Try Again
+        </button>
+      )}
       <p className="text-xs text-white/60">Rewards are manual only. No token distributions are automated in-app.</p>
     </section>
   );

@@ -171,15 +171,6 @@ export async function fetchLeaderboard(args?: {
   offset?: number;
 }): Promise<LeaderboardEntry[]> {
   const supabase = getSupabase();
-  type LeaderboardPublicRow = {
-    wallet_address: string;
-    username: string;
-    total_xp: number;
-    current_streak: number;
-    total_checkins: number;
-    best_score: number;
-    updated_at: string;
-  };
   const mode = args?.mode ?? "score";
   const limit = args?.limit ?? 20;
   const offset = args?.offset ?? 0;
@@ -192,7 +183,7 @@ export async function fetchLeaderboard(args?: {
   };
 
   const usersRes = await supabase
-    .from("leaderboard_public")
+    .from("users")
     .select("wallet_address,username,total_xp,current_streak,total_checkins,best_score,updated_at")
     .order(orderColumn[mode], { ascending: false })
     .order("updated_at", { ascending: false })
@@ -200,9 +191,7 @@ export async function fetchLeaderboard(args?: {
 
   if (usersRes.error) throw new Error(`Failed to load leaderboard users: ${usersRes.error.message}`);
 
-  const rows = (usersRes.data ?? []) as LeaderboardPublicRow[];
-
-  return rows.map((user) => ({
+  return (usersRes.data ?? []).map((user) => ({
     id: user.wallet_address,
     username: user.username,
     wallet: user.wallet_address,

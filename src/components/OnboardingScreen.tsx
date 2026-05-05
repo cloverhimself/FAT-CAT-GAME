@@ -8,11 +8,10 @@ type Props = {
   onStart: () => void;
   canStart: boolean;
   rpcHealthy: boolean;
-  startBusy: boolean;
   feedback: string;
 };
 
-export function OnboardingScreen({ username, onUsernameChange, onStart, canStart, rpcHealthy, startBusy, feedback }: Props) {
+export function OnboardingScreen({ username, onUsernameChange, onStart, canStart, rpcHealthy, feedback }: Props) {
   const [bannerSrc, setBannerSrc] = useState("/img/1500x1500.jpg");
 
   return (
@@ -66,11 +65,11 @@ export function OnboardingScreen({ username, onUsernameChange, onStart, canStart
 
       <button
         type="button"
-        disabled={!canStart || startBusy}
+        disabled={!canStart}
         onClick={onStart}
         className="rounded-xl bg-gradient-to-r from-[#ffe3ef] to-[#fff6df] px-5 py-3 text-sm font-bold uppercase tracking-[0.14em] text-[#ef3f87] shadow-md transition hover:brightness-105 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
       >
-        {startBusy ? "Starting..." : "Start Game"}
+        Start Game
       </button>
 
       {feedback && <p className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/85">{feedback}</p>}

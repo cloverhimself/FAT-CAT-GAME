@@ -27,7 +27,6 @@ import {
   upsertUser,
 } from "@/lib/supabase/gameData";
 import { hasSupabaseEnv } from "@/lib/supabase/client";
-import { clearWalletSession, ensureWalletSession } from "@/lib/supabase/walletSession";
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const MAX_SCORE = 1_000_000;
@@ -133,7 +132,6 @@ function AppShell() {
   const [submitState, setSubmitState] = useState<SolanaTxState>("idle");
   const [lastRecordId, setLastRecordId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
-  const [startBusy, setStartBusy] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(() => {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("fat-cat-sound") !== "off";
@@ -226,16 +224,12 @@ function AppShell() {
     if (!wallet.publicKey || !hasSupabaseEnv) {
       setProgress(null);
       setUsername("");
-      if (!wallet.publicKey) {
-        clearWalletSession();
-      }
       return;
     }
 
     let active = true;
     const load = async () => {
       try {
-        await ensureWalletSession(wallet);
         const current = await fetchUserProgress(wallet.publicKey!.toBase58());
         if (!active) return;
         setProgress(current);
@@ -303,10 +297,6 @@ function AppShell() {
       };
 
     try {
-      setStartBusy(true);
-      setFeedback("Verifying wallet session...");
-      await ensureWalletSession(wallet);
-      setFeedback("Loading player profile...");
       const nextProgress = await upsertUser({ wallet: walletKey, username: clean, progress: base });
       setProgress(nextProgress);
       setUsername(clean);
@@ -324,8 +314,6 @@ function AppShell() {
     } catch (error) {
       sound.playGameOver();
       setFeedback(toErrorMessage(error));
-    } finally {
-      setStartBusy(false);
     }
   };
 
@@ -468,7 +456,6 @@ function AppShell() {
     }
 
     try {
-      await ensureWalletSession(wallet);
       setCheckInState("loading");
       setFeedback("");
 
@@ -554,7 +541,6 @@ function AppShell() {
     }
 
     try {
-      await ensureWalletSession(wallet);
       setSubmitState("loading");
       setFeedback("");
 
@@ -729,7 +715,6 @@ function AppShell() {
           onStart={() => void startGame()}
           canStart={canStart}
           rpcHealthy={rpcHealthy}
-          startBusy={startBusy}
           feedback={feedback}
         />
       ) : (

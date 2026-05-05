@@ -12,6 +12,7 @@ type Props = {
   lastRecordId: string | null;
   onRetryCheckIn: () => void;
   onRetrySubmit: () => void;
+  onRetryRpc: () => void;
 };
 
 const txLabel: Record<SolanaTxState, string> = {
@@ -32,6 +33,7 @@ export function WalletStatusBanner({
   lastRecordId,
   onRetryCheckIn,
   onRetrySubmit,
+  onRetryRpc,
 }: Props) {
   const Row = ({ icon, label, value }: { icon: ReactNode; label: string; value: string }) => (
     <div className="flex items-center gap-2">
@@ -49,6 +51,15 @@ export function WalletStatusBanner({
       <Row icon={<FaCheckCircle />} label="Check-in" value={txLabel[checkInState]} />
       <Row icon={<FaTrophy />} label="Score submit" value={txLabel[submitState]} />
       <div className="flex flex-wrap gap-2 pt-1">
+        {!rpcHealthy && (
+          <button
+            type="button"
+            onClick={onRetryRpc}
+            className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold text-white transition hover:bg-white/30"
+          >
+            Retry RPC Check
+          </button>
+        )}
         {(checkInState === "failed" || checkInState === "rejected") && (
           <button
             type="button"
@@ -68,7 +79,7 @@ export function WalletStatusBanner({
           </button>
         )}
       </div>
-      {lastRecordId && <p className="truncate text-xs text-neon">Last record: {lastRecordId}</p>}
+      {/* Internal record IDs are intentionally hidden from public UI. */}
     </div>
   );
 }

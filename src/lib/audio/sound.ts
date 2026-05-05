@@ -14,10 +14,12 @@ export class SoundEngine {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
   private enabled = true;
-  private volume = 0.55;
+  private sfxVolume = 0.75;
+  private musicVolume = 0.45;
   private sfxBoost = 2.6;
   private music: HTMLAudioElement | null = null;
   private trackIndex = 0;
+  private onTrackEnded: (() => void) | null = null;
 
   private ensureContext(): AudioContext | null {
     if (typeof window === "undefined") return null;
@@ -27,7 +29,7 @@ export class SoundEngine {
     if (!Ctx) return null;
     const context = new Ctx();
     const master = context.createGain();
-    master.gain.value = this.volume;
+    master.gain.value = this.sfxVolume;
     master.connect(context.destination);
     this.context = context;
     this.master = master;
@@ -38,16 +40,17 @@ export class SoundEngine {
     if (typeof window === "undefined") return null;
     if (this.music) return this.music;
     const audio = new Audio(MUSIC_TRACKS[this.trackIndex]);
-    audio.preload = "auto";
+    audio.preload = "metadata";
     audio.loop = false;
-    audio.volume = Math.max(0, Math.min(1, this.volume * 0.65));
-    audio.addEventListener("ended", () => {
+    audio.volume = Math.max(0, Math.min(1, this.musicVolume));
+    this.onTrackEnded = () => {
       this.trackIndex = (this.trackIndex + 1) % MUSIC_TRACKS.length;
       audio.src = MUSIC_TRACKS[this.trackIndex];
       if (this.enabled) {
         void audio.play().catch(() => {});
       }
-    });
+    };
+    audio.addEventListener("ended", this.onTrackEnded);
     this.music = audio;
     return audio;
   }
@@ -61,7 +64,7 @@ export class SoundEngine {
 
   setEnabled(next: boolean): void {
     this.enabled = next;
-    const music = this.ensureMusic();
+    const music = this.music;
     if (music) {
       music.muted = !next;
       if (!next) music.pause();
@@ -72,20 +75,29 @@ export class SoundEngine {
     return this.enabled;
   }
 
-  setVolume(next: number): void {
+  setSfxVolume(next: number): void {
     const clamped = Math.max(0, Math.min(1, next));
-    this.volume = clamped;
+    this.sfxVolume = clamped;
     if (this.master) {
       this.master.gain.value = clamped;
     }
-    const music = this.ensureMusic();
+  }
+
+  setMusicVolume(next: number): void {
+    const clamped = Math.max(0, Math.min(1, next));
+    this.musicVolume = clamped;
+    const music = this.music;
     if (music) {
-      music.volume = Math.max(0, Math.min(1, clamped * 0.65));
+      music.volume = clamped;
     }
   }
 
-  getVolume(): number {
-    return this.volume;
+  getSfxVolume(): number {
+    return this.sfxVolume;
+  }
+
+  getMusicVolume(): number {
+    return this.musicVolume;
   }
 
   async startMusic(): Promise<boolean> {
@@ -102,13 +114,30 @@ export class SoundEngine {
   }
 
   pauseMusic(): void {
-    const music = this.ensureMusic();
-    music?.pause();
+    this.music?.pause();
   }
 
   isMusicPlaying(): boolean {
-    const music = this.ensureMusic();
+    const music = this.music;
     return !!music && !music.paused && !music.ended;
+  }
+
+  dispose(): void {
+    if (this.music) {
+      if (this.onTrackEnded) {
+        this.music.removeEventListener("ended", this.onTrackEnded);
+      }
+      this.music.pause();
+      this.music.src = "";
+      this.music.load();
+      this.music = null;
+    }
+    if (this.context) {
+      void this.context.close().catch(() => {});
+      this.context = null;
+      this.master = null;
+    }
+    this.onTrackEnded = null;
   }
 
   playClick(): void {

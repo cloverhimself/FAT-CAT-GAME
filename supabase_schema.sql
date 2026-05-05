@@ -52,10 +52,15 @@ create table if not exists public.scores (
 alter table public.scores add column if not exists suspicious_reason text;
 
 create index if not exists idx_users_best_score on public.users (best_score desc);
+create index if not exists idx_users_wallet_address on public.users (wallet_address);
 create index if not exists idx_users_total_xp on public.users (total_xp desc);
 create index if not exists idx_users_current_streak on public.users (current_streak desc);
 create index if not exists idx_checkins_wallet_date on public.checkins (wallet_address, checkin_date desc);
+create index if not exists idx_checkins_checkin_date on public.checkins (checkin_date desc);
 create index if not exists idx_scores_wallet_created on public.scores (wallet_address, created_at desc);
+create index if not exists idx_scores_score on public.scores (score desc);
+create index if not exists idx_scores_created_at on public.scores (created_at desc);
+create index if not exists idx_scores_game_session_id on public.scores (game_session_id);
 create index if not exists idx_scores_reviewed on public.scores (reviewed, suspicious_score);
 
 create or replace function public.set_updated_at()

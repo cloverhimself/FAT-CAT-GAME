@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 type Props = {
   username: string;
   score: number;
@@ -17,7 +19,7 @@ type Props = {
   onTryAgain: () => void;
 };
 
-export function GameHud({
+function GameHudImpl({
   username,
   score,
   level,
@@ -83,3 +85,5 @@ export function GameHud({
     </section>
   );
 }
+
+export const GameHud = memo(GameHudImpl);

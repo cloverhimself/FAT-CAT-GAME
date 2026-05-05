@@ -12,6 +12,8 @@ export type UserProgress = {
   bestScore: number;
 };
 
+export type LeaderboardMode = "score" | "streak" | "xp" | "checkins";
+
 function defaultProgress(wallet: string): UserProgress {
   return {
     username: "",
@@ -163,40 +165,43 @@ export async function saveScoreSubmission(args: {
   if (userError) throw new Error(`Failed to update user totals: ${userError.message}`);
 }
 
-export async function fetchLeaderboard(): Promise<LeaderboardEntry[]> {
+export async function fetchLeaderboard(args?: {
+  mode?: LeaderboardMode;
+  limit?: number;
+  offset?: number;
+}): Promise<LeaderboardEntry[]> {
   const supabase = getSupabase();
-  const [usersRes, scoresRes] = await Promise.all([
-    supabase.from("users").select("wallet_address,username,total_xp,current_streak,total_checkins,best_score,updated_at").order("best_score", { ascending: false }).limit(100),
-    supabase.from("scores").select("wallet_address,level,created_at").order("created_at", { ascending: false }).limit(500),
-  ]);
+  const mode = args?.mode ?? "score";
+  const limit = args?.limit ?? 20;
+  const offset = args?.offset ?? 0;
+
+  const orderColumn: Record<LeaderboardMode, "best_score" | "current_streak" | "total_xp" | "total_checkins"> = {
+    score: "best_score",
+    streak: "current_streak",
+    xp: "total_xp",
+    checkins: "total_checkins",
+  };
+
+  const usersRes = await supabase
+    .from("users")
+    .select("wallet_address,username,total_xp,current_streak,total_checkins,best_score,updated_at")
+    .order(orderColumn[mode], { ascending: false })
+    .order("updated_at", { ascending: false })
+    .range(offset, offset + limit - 1);
 
   if (usersRes.error) throw new Error(`Failed to load leaderboard users: ${usersRes.error.message}`);
-  if (scoresRes.error) throw new Error(`Failed to load leaderboard scores: ${scoresRes.error.message}`);
 
-  const latestScoreByWallet = new Map<string, { level: number; createdAt: string }>();
-  for (const row of scoresRes.data ?? []) {
-    if (!latestScoreByWallet.has(row.wallet_address)) {
-      latestScoreByWallet.set(row.wallet_address, {
-        level: row.level,
-        createdAt: row.created_at,
-      });
-    }
-  }
-
-  return (usersRes.data ?? []).map((user) => {
-    const latest = latestScoreByWallet.get(user.wallet_address);
-    return {
-      id: user.wallet_address,
-      username: user.username,
-      wallet: user.wallet_address,
-      score: user.best_score,
-      level: latest?.level ?? 1,
-      submittedAt: latest?.createdAt ?? user.updated_at,
-      streak: user.current_streak,
-      totalXP: user.total_xp,
-      totalCheckIns: user.total_checkins,
-    };
-  });
+  return (usersRes.data ?? []).map((user) => ({
+    id: user.wallet_address,
+    username: user.username,
+    wallet: user.wallet_address,
+    score: user.best_score,
+    level: 1,
+    submittedAt: user.updated_at,
+    streak: user.current_streak,
+    totalXP: user.total_xp,
+    totalCheckIns: user.total_checkins,
+  }));
 }
 
 export async function hasSubmittedSession(gameSessionId: string): Promise<boolean> {

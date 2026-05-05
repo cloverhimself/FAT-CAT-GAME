@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { SolanaAppProvider } from "@/components/SolanaAppProvider";
 import { OnboardingScreen } from "@/components/OnboardingScreen";
 import { WalletStatusBanner } from "@/components/WalletStatusBanner";
@@ -15,6 +16,7 @@ import { SolanaTxState, checkRpcHealth, classifyTxError, toErrorMessage } from "
 import { LeaderboardEntry } from "@/lib/state/leaderboard";
 import { getSoundEngine } from "@/lib/audio/sound";
 import {
+  LeaderboardMode,
   UserProgress,
   fetchLeaderboard,
   fetchUserProgress,
@@ -30,6 +32,7 @@ const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 const MAX_SCORE = 1_000_000;
 const MAX_LEVEL = 20;
 const MIN_SESSION_MS = 8_000;
+const LEADERBOARD_PAGE_SIZE = 20;
 
 function targetForLevel(level: number): number {
   return 350 + Math.floor(level * level * 38);
@@ -116,6 +119,11 @@ function AppShell() {
 
   const [progress, setProgress] = useState<UserProgress | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [leaderboardMode, setLeaderboardMode] = useState<LeaderboardMode>("score");
+  const [leaderboardOffset, setLeaderboardOffset] = useState(0);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
+  const [leaderboardHasMore, setLeaderboardHasMore] = useState(false);
 
   const [rpcHealthy, setRpcHealthy] = useState(true);
   const [rpcReason, setRpcReason] = useState<string | null>(null);
@@ -128,41 +136,79 @@ function AppShell() {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("fat-cat-sound") !== "off";
   });
-  const [soundVolume, setSoundVolume] = useState(() => {
-    if (typeof window === "undefined") return 0.55;
-    const raw = localStorage.getItem("fat-cat-volume");
-    const parsed = raw ? Number(raw) : 0.55;
-    return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : 0.55;
+  const [sfxVolume, setSfxVolume] = useState(() => {
+    if (typeof window === "undefined") return 0.75;
+    const raw = localStorage.getItem("fat-cat-sfx-volume");
+    const parsed = raw ? Number(raw) : 0.75;
+    return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : 0.75;
+  });
+  const [musicVolume, setMusicVolume] = useState(() => {
+    if (typeof window === "undefined") return 0.45;
+    const raw = localStorage.getItem("fat-cat-music-volume");
+    const parsed = raw ? Number(raw) : 0.45;
+    return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : 0.45;
   });
   const [musicPlaying, setMusicPlaying] = useState(false);
   const [levelUpState, setLevelUpState] = useState<LevelUpState | null>(null);
+  const [levelUpArt, setLevelUpArt] = useState("/img/fatcats-tab.png");
+  const scorePopTimerRef = useRef<number | null>(null);
 
-  const refreshLeaderboard = async () => {
+  const refreshLeaderboard = useCallback(async (mode: LeaderboardMode, offset = 0, append = false) => {
     if (!hasSupabaseEnv) return;
+    setLeaderboardLoading(true);
+    setLeaderboardError(null);
     try {
-      const rows = await fetchLeaderboard();
-      setLeaderboard(rows);
+      const rows = await fetchLeaderboard({
+        mode,
+        limit: LEADERBOARD_PAGE_SIZE,
+        offset,
+      });
+      setLeaderboardHasMore(rows.length === LEADERBOARD_PAGE_SIZE);
+      setLeaderboardOffset(offset);
+      if (append) {
+        setLeaderboard((prev) => {
+          const seen = new Set(prev.map((item) => item.id));
+          const merged = [...prev];
+          for (const row of rows) {
+            if (!seen.has(row.id)) {
+              merged.push(row);
+            }
+          }
+          return merged;
+        });
+      } else {
+        setLeaderboard(rows);
+      }
     } catch (error) {
-      setFeedback(toErrorMessage(error));
+      setLeaderboardError(toErrorMessage(error));
+      if (!append) setLeaderboard([]);
+    } finally {
+      setLeaderboardLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     sound.setEnabled(soundEnabled);
-    sound.setVolume(soundVolume);
+    sound.setSfxVolume(sfxVolume);
+    sound.setMusicVolume(musicVolume);
     if (typeof window !== "undefined") {
       localStorage.setItem("fat-cat-sound", soundEnabled ? "on" : "off");
-      localStorage.setItem("fat-cat-volume", String(soundVolume));
+      localStorage.setItem("fat-cat-sfx-volume", String(sfxVolume));
+      localStorage.setItem("fat-cat-music-volume", String(musicVolume));
     }
     if (!soundEnabled) {
       sound.pauseMusic();
       setMusicPlaying(false);
     }
-  }, [sound, soundEnabled, soundVolume]);
+  }, [sound, soundEnabled, sfxVolume, musicVolume]);
 
   useEffect(() => {
     return () => {
       sound.pauseMusic();
+      sound.dispose();
+      if (scorePopTimerRef.current !== null) {
+        window.clearTimeout(scorePopTimerRef.current);
+      }
     };
   }, [sound]);
 
@@ -171,8 +217,8 @@ function AppShell() {
       setFeedback("Supabase env missing. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local.");
       return;
     }
-    void refreshLeaderboard();
-  }, []);
+    void refreshLeaderboard(leaderboardMode, 0, false);
+  }, [leaderboardMode, refreshLeaderboard]);
 
   useEffect(() => {
     if (!wallet.publicKey || !hasSupabaseEnv) {
@@ -201,25 +247,17 @@ function AppShell() {
     };
   }, [wallet.publicKey]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
-      const health = await checkRpcHealth(connection);
-      if (cancelled) return;
-      setRpcHealthy(health.ok);
-      setRpcReason(health.reason ?? null);
-    };
-
-    void run();
-    const timer = setInterval(() => void run(), 15000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
+  const runRpcHealthCheck = useCallback(async () => {
+    const health = await checkRpcHealth(connection);
+    setRpcHealthy(health.ok);
+    setRpcReason(health.reason ?? null);
   }, [connection]);
 
-  const canStart = wallet.connected && usernameInput.trim().length >= 3 && rpcHealthy && hasSupabaseEnv;
+  useEffect(() => {
+    void runRpcHealthCheck();
+  }, [runRpcHealthCheck, wallet.connected]);
+
+  const canStart = wallet.connected && usernameInput.trim().length >= 3 && hasSupabaseEnv;
   const canCheckIn = !!progress && !isSameDay(progress.lastCheckInDay) && checkInState !== "loading";
   const boardLocked = isResolving || levelFailed || pendingSwap !== null || levelUpState !== null;
 
@@ -305,7 +343,10 @@ function AppShell() {
     const popId = Date.now();
     setMatchFxTick((prev) => prev + 1);
     setScorePop({ id: popId, text: `+${gained}` });
-    setTimeout(() => {
+    if (scorePopTimerRef.current !== null) {
+      window.clearTimeout(scorePopTimerRef.current);
+    }
+    scorePopTimerRef.current = window.setTimeout(() => {
       setScorePop((current) => (current && current.id === popId ? null : current));
     }, 900);
 
@@ -447,7 +488,7 @@ function AppShell() {
       setLastRecordId(dbCheckinId);
       setFeedback(`Daily check-in saved. +${xpGain} XP`);
       sound.playCheckInSuccess();
-      await refreshLeaderboard();
+      await refreshLeaderboard(leaderboardMode, 0, false);
     } catch (error) {
       setCheckInState(classifyTxError(error));
       setFeedback(toErrorMessage(error));
@@ -546,7 +587,7 @@ function AppShell() {
       setLastRecordId(dbScoreId);
       setFeedback(`Score saved. +${xpFromRun} XP. Manual rewards review only.`);
       sound.playScoreSubmitSuccess();
-      await refreshLeaderboard();
+      await refreshLeaderboard(leaderboardMode, 0, false);
     } catch (error) {
       setSubmitState(classifyTxError(error));
       setFeedback(toErrorMessage(error));
@@ -568,6 +609,12 @@ function AppShell() {
   const handleRetrySubmit = () => {
     if (submitState === "loading") return;
     void handleScoreSubmit();
+  };
+
+  const handleLoadMoreLeaderboard = () => {
+    if (leaderboardLoading || !leaderboardHasMore) return;
+    const nextOffset = leaderboardOffset + LEADERBOARD_PAGE_SIZE;
+    void refreshLeaderboard(leaderboardMode, nextOffset, true);
   };
 
   const badge = useMemo(() => {
@@ -612,13 +659,24 @@ function AppShell() {
               Sound: {soundEnabled ? "On" : "Off"}
             </button>
             <label className="flex items-center gap-2 rounded-full border border-white/35 bg-white/15 px-3 py-1 text-xs font-semibold text-white">
-              Volume
+              Music
               <input
                 type="range"
                 min={0}
                 max={100}
-                value={Math.round(soundVolume * 100)}
-                onChange={(event) => setSoundVolume(Number(event.target.value) / 100)}
+                value={Math.round(musicVolume * 100)}
+                onChange={(event) => setMusicVolume(Number(event.target.value) / 100)}
+                className="h-1 w-20 accent-cyan-300"
+              />
+            </label>
+            <label className="flex items-center gap-2 rounded-full border border-white/35 bg-white/15 px-3 py-1 text-xs font-semibold text-white">
+              SFX
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(sfxVolume * 100)}
+                onChange={(event) => setSfxVolume(Number(event.target.value) / 100)}
                 className="h-1 w-20 accent-cyan-300"
               />
             </label>
@@ -628,17 +686,20 @@ function AppShell() {
         <p className="mt-2 text-xs text-white/65">This app never moves your SOL or tokens. Wallet-linked check-ins and scores are saved for leaderboard and manual rewards only.</p>
       </header>
 
-      <WalletStatusBanner
-        walletConnected={wallet.connected}
-        walletConnecting={wallet.connecting}
-        rpcHealthy={rpcHealthy}
-        rpcReason={rpcReason}
-        checkInState={checkInState}
-        submitState={submitState}
-        lastRecordId={lastRecordId}
-        onRetryCheckIn={handleRetryCheckIn}
-        onRetrySubmit={handleRetrySubmit}
-      />
+      <ErrorBoundary fallback={<div className="rounded-2xl border border-red-300/40 bg-red-500/15 px-4 py-3 text-sm text-red-100">Status panel unavailable.</div>}>
+        <WalletStatusBanner
+          walletConnected={wallet.connected}
+          walletConnecting={wallet.connecting}
+          rpcHealthy={rpcHealthy}
+          rpcReason={rpcReason}
+          checkInState={checkInState}
+          submitState={submitState}
+          lastRecordId={lastRecordId}
+          onRetryCheckIn={handleRetryCheckIn}
+          onRetrySubmit={handleRetrySubmit}
+          onRetryRpc={() => void runRpcHealthCheck()}
+        />
+      </ErrorBoundary>
 
       {!hasSupabaseEnv && (
         <div className="rounded-2xl border border-red-300/40 bg-red-500/15 px-4 py-3 text-sm text-red-100">
@@ -684,14 +745,16 @@ function AppShell() {
                 </div>
               )}
               {levelUpState && <div className="absolute inset-0 z-20 rounded-[28px] bg-black/40 backdrop-blur-sm" />}
-              <GameBoard
-                board={board}
-                clearingSet={clearingSet}
-                locked={boardLocked}
-                onSwap={handleSwap}
-                pendingSwap={pendingSwap}
-                fxTick={matchFxTick}
-              />
+              <ErrorBoundary fallback={<div className="rounded-2xl border border-red-300/40 bg-red-500/15 px-4 py-6 text-center text-sm text-red-100">Game board failed to render. Refresh to continue.</div>}>
+                <GameBoard
+                  board={board}
+                  clearingSet={clearingSet}
+                  locked={boardLocked}
+                  onSwap={handleSwap}
+                  pendingSwap={pendingSwap}
+                  fxTick={matchFxTick}
+                />
+              </ErrorBoundary>
               {levelUpState && (
                 <div className="levelup-overlay absolute inset-0 z-30 flex items-center justify-center p-4">
                   <div className="levelup-modal relative w-full max-w-sm overflow-hidden rounded-2xl border border-cyan-200/55 bg-[#121a3dcc] p-5 text-center shadow-[0_0_35px_rgba(84,230,255,0.35)] backdrop-blur-md">
@@ -700,7 +763,14 @@ function AppShell() {
                       <span className="levelup-spark levelup-spark-2" />
                       <span className="levelup-spark levelup-spark-3" />
                     </div>
-                    <img src="/img/fatcats-tab.png" alt="FAT CAT character art" className="mx-auto h-24 w-24 rounded-full border border-white/35 object-cover shadow-lg" />
+                    <img
+                      src={levelUpArt}
+                      alt="FAT CAT character art"
+                      loading="lazy"
+                      decoding="async"
+                      onError={() => setLevelUpArt("/img/CAT1.jpg")}
+                      className="mx-auto h-24 w-24 rounded-full border border-white/35 object-cover shadow-lg"
+                    />
                     <h3 className="mt-3 text-3xl font-black tracking-wide text-white">LEVEL UP!</h3>
                     <p className="mt-1 text-sm text-cyan-100">You advanced to Level {levelUpState.nextLevel}</p>
                     <button
@@ -717,7 +787,21 @@ function AppShell() {
             {feedback && <p className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/85">{feedback}</p>}
           </div>
 
-          <LeaderboardPanel entries={leaderboard} />
+          <ErrorBoundary fallback={<div className="glass-panel rounded-2xl p-4 text-sm text-white/75">Leaderboard unavailable right now. Gameplay still works.</div>}>
+            <LeaderboardPanel
+              entries={leaderboard}
+              mode={leaderboardMode}
+              isLoading={leaderboardLoading}
+              hasMore={leaderboardHasMore}
+              error={leaderboardError}
+              onModeChange={(mode) => {
+                setLeaderboardMode(mode);
+                setLeaderboardOffset(0);
+              }}
+              onLoadMore={handleLoadMoreLeaderboard}
+              onRetry={() => void refreshLeaderboard(leaderboardMode, 0, false)}
+            />
+          </ErrorBoundary>
         </div>
       )}
       <SocialLinks />

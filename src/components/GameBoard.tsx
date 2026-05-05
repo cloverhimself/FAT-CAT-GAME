@@ -1,4 +1,4 @@
-import { PointerEvent, TouchEvent, useEffect, useMemo, useRef, useState } from "react";
+import { PointerEvent, TouchEvent, memo, useEffect, useMemo, useRef, useState } from "react";
 import { Coord, GRID_SIZE, TileValue } from "@/lib/game/types";
 import { isAdjacent } from "@/lib/game/tileMatching";
 
@@ -57,7 +57,7 @@ function getSwipeTarget(from: Coord, dx: number, dy: number): Coord | null {
   return inBounds(target) ? target : null;
 }
 
-export function GameBoard({ board, clearingSet, locked, onSwap, pendingSwap, fxTick }: Props) {
+function GameBoardImpl({ board, clearingSet, locked, onSwap, pendingSwap, fxTick }: Props) {
   const [selected, setSelected] = useState<Coord | null>(null);
   const [dragging, setDragging] = useState<Coord | null>(null);
   const [dropPulse, setDropPulse] = useState(0);
@@ -227,3 +227,5 @@ export function GameBoard({ board, clearingSet, locked, onSwap, pendingSwap, fxT
     </div>
   );
 }
+
+export const GameBoard = memo(GameBoardImpl);

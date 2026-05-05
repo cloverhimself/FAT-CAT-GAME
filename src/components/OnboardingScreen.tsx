@@ -20,6 +20,8 @@ export function OnboardingScreen({ username, onUsernameChange, onStart, canStart
           src={bannerSrc}
           alt="FAT CATS banner"
           className="h-auto w-full rounded-xl object-cover"
+          loading="lazy"
+          decoding="async"
           onError={() => setBannerSrc("/img/fatcats-tab.png")}
         />
       </div>

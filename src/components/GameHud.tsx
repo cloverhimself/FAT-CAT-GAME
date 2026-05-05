@@ -46,7 +46,7 @@ export function GameHud({
           type="button"
           onClick={onCheckIn}
           disabled={!canCheckIn || checkInBusy}
-          className="rounded-lg bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-[#ef3f87] shadow-sm transition hover:-translate-y-0.5 disabled:opacity-45"
+          className="rounded-lg bg-gradient-to-r from-[#ffe3ef] to-[#fff6df] px-4 py-2.5 text-xs font-bold uppercase tracking-[0.12em] text-[#ef3f87] shadow-sm transition hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-45"
         >
           {checkInBusy ? "Checking in..." : canCheckIn ? "Daily Check-in" : "Checked-in Today"}
         </button>
@@ -55,7 +55,7 @@ export function GameHud({
           type="button"
           onClick={onSubmitScore}
           disabled={submitBusy}
-          className="rounded-lg bg-[#ffd27a] px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-[#8a2e2b] shadow-sm transition hover:-translate-y-0.5 disabled:opacity-45"
+          className="rounded-lg bg-gradient-to-r from-[#ffd27a] to-[#ffe6a8] px-4 py-2.5 text-xs font-bold uppercase tracking-[0.12em] text-[#8a2e2b] shadow-sm transition hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-45"
         >
           {submitBusy ? "Submitting..." : "Submit Score On-Chain"}
         </button>

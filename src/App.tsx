@@ -6,23 +6,29 @@ import { WalletStatusBanner } from "@/components/WalletStatusBanner";
 import { GameBoard } from "@/components/GameBoard";
 import { GameHud } from "@/components/GameHud";
 import { LeaderboardPanel } from "@/components/LeaderboardPanel";
-import { canSwap, clearAndDrop, createBoard, scoreForMatch, swapTiles } from "@/lib/game/gameLogic";
+import { SocialLinks } from "@/components/SocialLinks";
+import { clearAndDrop, createBoard, scoreForMatch, swapTiles } from "@/lib/game/gameLogic";
 import { Coord } from "@/lib/game/types";
 import { findMatches } from "@/lib/game/tileMatching";
 import { getNetworkLabel } from "@/lib/config/network";
 import { submitDailyCheckInTx, toUtcDay } from "@/lib/solana/dailyCheckIn";
 import { submitScoreTx } from "@/lib/solana/scoreSubmission";
 import { SolanaTxState, checkRpcHealth, classifyTxError, toErrorMessage } from "@/lib/solana/txHelpers";
-import { LeaderboardEntry, getLeaderboard, isSameDay, upsertLeaderboardEntry } from "@/lib/state/leaderboard";
-import { UserProgress, getUserProgress, saveUserProgress } from "@/lib/storage/userProgress";
+import { LeaderboardEntry } from "@/lib/state/leaderboard";
+import {
+  UserProgress,
+  fetchLeaderboard,
+  fetchUserProgress,
+  hasSubmittedSession,
+  sanitizeUsername,
+  saveDailyCheckin,
+  saveScoreSubmission,
+  upsertUser,
+} from "@/lib/supabase/gameData";
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const MAX_MOVES = 30;
 const MAX_SCORE = 1_000_000;
-
-function sanitizeUsername(input: string): string {
-  return input.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 18);
-}
 
 function utcYesterdayOf(day: string): string {
   const date = new Date(`${day}T00:00:00.000Z`);
@@ -30,8 +36,13 @@ function utcYesterdayOf(day: string): string {
   return date.toISOString().slice(0, 10);
 }
 
+function isSameDay(isoDay: string | null): boolean {
+  if (!isoDay) return false;
+  return isoDay === toUtcDay();
+}
+
 function getSubmittedSessionKey(wallet: string): string {
-  return `meme-match3-submitted-sessions:${wallet}`;
+  return `fat-cat-match3-submitted-sessions:${wallet}`;
 }
 
 function loadSubmittedSessions(wallet: string): Set<string> {
@@ -86,19 +97,44 @@ function AppShell() {
   const [lastSignature, setLastSignature] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
 
+  const refreshLeaderboard = async () => {
+    try {
+      const rows = await fetchLeaderboard();
+      setLeaderboard(rows);
+    } catch (error) {
+      setFeedback(toErrorMessage(error));
+    }
+  };
+
   useEffect(() => {
-    setLeaderboard(getLeaderboard());
+    void refreshLeaderboard();
   }, []);
 
   useEffect(() => {
     if (!wallet.publicKey) {
       setProgress(null);
+      setUsername("");
       return;
     }
 
-    const current = getUserProgress(wallet.publicKey.toBase58());
-    setProgress(current);
-    if (current.username) setUsernameInput(current.username);
+    let active = true;
+    const load = async () => {
+      try {
+        const current = await fetchUserProgress(wallet.publicKey!.toBase58());
+        if (!active) return;
+        setProgress(current);
+        setUsername(current.username);
+        if (current.username) setUsernameInput(current.username);
+      } catch (error) {
+        if (!active) return;
+        setFeedback(toErrorMessage(error));
+      }
+    };
+    void load();
+
+    return () => {
+      active = false;
+    };
   }, [wallet.publicKey]);
 
   useEffect(() => {
@@ -123,7 +159,7 @@ function AppShell() {
   const canCheckIn = !!progress && !isSameDay(progress.lastCheckInDay) && checkInState !== "loading";
   const boardLocked = isResolving || movesRemaining <= 0 || pendingSwap !== null;
 
-  const startGame = () => {
+  const startGame = async () => {
     if (!wallet.publicKey || !canStart) return;
 
     const clean = sanitizeUsername(usernameInput.trim());
@@ -144,8 +180,13 @@ function AppShell() {
         bestScore: 0,
       };
 
-    const nextProgress = { ...base, username: clean };
-    saveUserProgress(nextProgress);
+    let nextProgress = { ...base, username: clean };
+    try {
+      nextProgress = await upsertUser({ wallet: walletKey, username: clean, progress: nextProgress });
+    } catch (error) {
+      setFeedback(toErrorMessage(error));
+      return;
+    }
 
     setProgress(nextProgress);
     setUsername(clean);
@@ -200,12 +241,14 @@ function AppShell() {
         return updated;
       });
     }
+
+    return totalMatched > 0;
   };
 
   const handleSwap = async (a: Coord, b: Coord) => {
     if (boardLocked) return;
-    if (!canSwap(board, a, b)) return;
 
+    const original = board;
     setMovesRemaining((prev) => Math.max(0, prev - 1));
     setPendingSwap({ a, b });
     await delay(130);
@@ -215,7 +258,13 @@ function AppShell() {
     setIsResolving(true);
 
     try {
-      await resolveMatches(swapped);
+      const hadMatch = await resolveMatches(swapped);
+      if (!hadMatch) {
+        setPendingSwap({ a: b, b: a });
+        await delay(130);
+        setBoard(original);
+        setPendingSwap(null);
+      }
     } finally {
       setIsResolving(false);
     }
@@ -223,6 +272,13 @@ function AppShell() {
 
   const handleCheckIn = async () => {
     if (!wallet.publicKey || !progress) return;
+    const walletKey = wallet.publicKey.toBase58();
+    const cleanUsername = sanitizeUsername(progress.username || username || usernameInput);
+    if (cleanUsername.length < 3) {
+      setCheckInState("failed");
+      setFeedback("Username must be at least 3 valid characters.");
+      return;
+    }
 
     try {
       setCheckInState("loading");
@@ -231,7 +287,7 @@ function AppShell() {
       const result = await submitDailyCheckInTx({
         connection,
         wallet,
-        username: progress.username || username,
+        username: cleanUsername,
       });
 
       const today = toUtcDay();
@@ -247,19 +303,40 @@ function AppShell() {
         totalCheckIns: progress.totalCheckIns + 1,
       };
 
-      saveUserProgress(nextProgress);
+      await saveDailyCheckin({
+        wallet: walletKey,
+        username: cleanUsername,
+        txSignature: result.signature,
+        checkinDate: today,
+        xpAwarded: xpGain,
+        nextProgress,
+      });
       setProgress(nextProgress);
+      setUsername(cleanUsername);
       setCheckInState("success");
       setLastSignature(result.signature);
       setFeedback(`Daily check-in confirmed. +${xpGain} XP`);
+      await refreshLeaderboard();
     } catch (error) {
       setCheckInState(classifyTxError(error));
       setFeedback(toErrorMessage(error));
     }
   };
 
+  const handleRetryCheckIn = () => {
+    if (checkInState === "loading") return;
+    void handleCheckIn();
+  };
+
   const handleScoreSubmit = async () => {
     if (!wallet.publicKey || !progress) return;
+    const walletKey = wallet.publicKey.toBase58();
+    const cleanUsername = sanitizeUsername(progress.username || username || usernameInput);
+    if (cleanUsername.length < 3) {
+      setSubmitState("failed");
+      setFeedback("Username must be at least 3 valid characters.");
+      return;
+    }
 
     if (!isValidScore(score)) {
       setSubmitState("failed");
@@ -267,22 +344,21 @@ function AppShell() {
       return;
     }
 
-    const walletKey = wallet.publicKey.toBase58();
-    const submittedSessions = loadSubmittedSessions(walletKey);
-    if (submittedSessions.has(sessionId)) {
-      setSubmitState("failed");
-      setFeedback("This session score is already submitted.");
-      return;
-    }
-
     try {
       setSubmitState("loading");
       setFeedback("");
 
+      const submittedSessions = loadSubmittedSessions(walletKey);
+      if (submittedSessions.has(sessionId) || (await hasSubmittedSession(sessionId))) {
+        setSubmitState("failed");
+        setFeedback("This session score is already submitted.");
+        return;
+      }
+
       const result = await submitScoreTx({
         connection,
         wallet,
-        username: progress.username || username,
+        username: cleanUsername,
         score,
         level,
         sessionId,
@@ -297,29 +373,34 @@ function AppShell() {
         bestScore: Math.max(progress.bestScore, score),
         totalXP: progress.totalXP + xpFromRun,
       };
-      saveUserProgress(nextProgress);
-      setProgress(nextProgress);
-
-      const entry: LeaderboardEntry = {
-        id: walletKey,
-        username: nextProgress.username,
+      const suspiciousScore = score > 200000 || level > 500 || movesRemaining < 0;
+      await saveScoreSubmission({
         wallet: walletKey,
-        score: Math.max(score, progress.bestScore),
+        username: cleanUsername,
+        score,
         level,
-        submittedAt: new Date().toISOString(),
-        streak: nextProgress.streak,
-        totalXP: nextProgress.totalXP,
-        totalCheckIns: nextProgress.totalCheckIns,
-      };
+        movesUsed: MAX_MOVES - movesRemaining,
+        gameSessionId: sessionId,
+        txSignature: result.signature,
+        suspiciousScore,
+        nextProgress,
+      });
+      setProgress(nextProgress);
+      setUsername(cleanUsername);
 
-      setLeaderboard(upsertLeaderboardEntry(entry));
       setSubmitState("success");
       setLastSignature(result.signature);
       setFeedback(`Score submitted on-chain. +${xpFromRun} XP`);
+      await refreshLeaderboard();
     } catch (error) {
       setSubmitState(classifyTxError(error));
       setFeedback(toErrorMessage(error));
     }
+  };
+
+  const handleRetrySubmit = () => {
+    if (submitState === "loading") return;
+    void handleScoreSubmit();
   };
 
   const badge = useMemo(() => {
@@ -332,11 +413,11 @@ function AppShell() {
   }, [progress?.streak]);
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 p-4 pb-10 sm:p-6">
+    <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-5 px-3 pb-10 pt-4 sm:px-5 sm:pt-6">
       <header className="glass-panel rounded-3xl p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h1 className="text-3xl font-black text-white">Solana Meme Match-3</h1>
+            <h1 className="text-3xl font-black text-white">FAT CAT Match-3</h1>
             <p className="text-xs uppercase tracking-[0.16em] text-accent2">Network: {getNetworkLabel()}</p>
           </div>
           <p className="rounded-full border border-white/35 bg-white/15 px-3 py-1 text-xs text-white">Badge: {badge}</p>
@@ -352,6 +433,8 @@ function AppShell() {
         checkInState={checkInState}
         submitState={submitState}
         lastSignature={lastSignature}
+        onRetryCheckIn={handleRetryCheckIn}
+        onRetrySubmit={handleRetrySubmit}
       />
 
       {!started ? (
@@ -363,7 +446,7 @@ function AppShell() {
           rpcHealthy={rpcHealthy}
         />
       ) : (
-        <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="grid items-start gap-4 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="space-y-4">
             <GameHud
               username={username}
@@ -402,6 +485,7 @@ function AppShell() {
           <LeaderboardPanel entries={leaderboard} />
         </div>
       )}
+      <SocialLinks />
     </main>
   );
 }

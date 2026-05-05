@@ -9,6 +9,8 @@ type Props = {
   checkInState: SolanaTxState;
   submitState: SolanaTxState;
   lastSignature: string | null;
+  onRetryCheckIn: () => void;
+  onRetrySubmit: () => void;
 };
 
 const txLabel: Record<SolanaTxState, string> = {
@@ -27,6 +29,8 @@ export function WalletStatusBanner({
   checkInState,
   submitState,
   lastSignature,
+  onRetryCheckIn,
+  onRetrySubmit,
 }: Props) {
   return (
     <div className="glass-panel grid gap-2 rounded-2xl p-4 text-sm text-white/85">
@@ -34,6 +38,26 @@ export function WalletStatusBanner({
       <p>RPC: {rpcHealthy ? "Healthy" : `Issue: ${rpcReason ?? "unknown"}`}</p>
       <p>Check-in: {txLabel[checkInState]}</p>
       <p>Score submit: {txLabel[submitState]}</p>
+      <div className="flex flex-wrap gap-2 pt-1">
+        {(checkInState === "failed" || checkInState === "rejected") && (
+          <button
+            type="button"
+            onClick={onRetryCheckIn}
+            className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold text-white transition hover:bg-white/30"
+          >
+            Retry Check-in
+          </button>
+        )}
+        {(submitState === "failed" || submitState === "rejected") && (
+          <button
+            type="button"
+            onClick={onRetrySubmit}
+            className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold text-white transition hover:bg-white/30"
+          >
+            Retry Score Submit
+          </button>
+        )}
+      </div>
       {lastSignature && (
         <a
           className="truncate text-xs text-neon underline"

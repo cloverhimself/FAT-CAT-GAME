@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Coord, GRID_SIZE, TileValue } from "@/lib/game/types";
+import { isAdjacent } from "@/lib/game/tileMatching";
 
 const TILE_ART = [
   "/img/CAT1.jpg",
@@ -19,20 +20,34 @@ type Props = {
   fxTick: number;
 };
 
-function indexToCoord(index: number): Coord {
-  return { row: Math.floor(index / GRID_SIZE), col: index % GRID_SIZE };
-}
+type PointerGesture = {
+  active: boolean;
+  coord: Coord | null;
+  startX: number;
+  startY: number;
+  triggeredSwap: boolean;
+};
 
 function coordToKey(row: number, col: number): string {
   return `${row}:${col}`;
 }
 
+function inBounds(coord: Coord): boolean {
+  return coord.row >= 0 && coord.row < GRID_SIZE && coord.col >= 0 && coord.col < GRID_SIZE;
+}
+
 export function GameBoard({ board, clearingSet, locked, onSwap, pendingSwap, fxTick }: Props) {
   const [selected, setSelected] = useState<Coord | null>(null);
+  const [dragging, setDragging] = useState<Coord | null>(null);
   const [dropPulse, setDropPulse] = useState(0);
-  const dragFrom = useRef<number | null>(null);
-  const touchStart = useRef<{ idx: number; x: number; y: number } | null>(null);
   const lastBoardSig = useRef("");
+  const gestureRef = useRef<PointerGesture>({
+    active: false,
+    coord: null,
+    startX: 0,
+    startY: 0,
+    triggeredSwap: false,
+  });
 
   useEffect(() => {
     const nextSig = board.flat().join(",");
@@ -51,11 +66,15 @@ export function GameBoard({ board, clearingSet, locked, onSwap, pendingSwap, fxT
     if (!isA && !isB) return null;
     const from = isA ? pendingSwap.a : pendingSwap.b;
     const to = isA ? pendingSwap.b : pendingSwap.a;
-    return { x: (to.col - from.col) * 102, y: (to.row - from.row) * 102 };
+    return { x: (to.col - from.col) * 100, y: (to.row - from.row) * 100 };
   };
 
   const trySwap = (a: Coord, b: Coord) => {
     if (locked) return;
+    if (!isAdjacent(a, b)) {
+      setSelected(b);
+      return;
+    }
     onSwap(a, b);
     setSelected(null);
   };
@@ -73,8 +92,62 @@ export function GameBoard({ board, clearingSet, locked, onSwap, pendingSwap, fxT
     trySwap(selected, coord);
   };
 
+  const handlePointerDown = (coord: Coord, clientX: number, clientY: number) => {
+    if (locked) return;
+    gestureRef.current = {
+      active: true,
+      coord,
+      startX: clientX,
+      startY: clientY,
+      triggeredSwap: false,
+    };
+    setDragging(coord);
+  };
+
+  const handlePointerMove = (event: PointerEvent) => {
+    if (event.pointerType === "touch") event.preventDefault();
+    const gesture = gestureRef.current;
+    if (!gesture.active || !gesture.coord || gesture.triggeredSwap || locked) return;
+
+    const dx = event.clientX - gesture.startX;
+    const dy = event.clientY - gesture.startY;
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+
+    if (Math.max(absX, absY) < 10) return;
+
+    const target = { ...gesture.coord };
+    if (absX > absY) {
+      target.col += dx > 0 ? 1 : -1;
+    } else {
+      target.row += dy > 0 ? 1 : -1;
+    }
+
+    if (!inBounds(target)) return;
+
+    gestureRef.current = { ...gesture, triggeredSwap: true };
+    setDragging(null);
+    trySwap(gesture.coord, target);
+  };
+
+  const handlePointerUp = () => {
+    const gesture = gestureRef.current;
+    if (gesture.active && !gesture.triggeredSwap && gesture.coord) {
+      onTileClick(gesture.coord);
+    }
+
+    gestureRef.current = {
+      active: false,
+      coord: null,
+      startX: 0,
+      startY: 0,
+      triggeredSwap: false,
+    };
+    setDragging(null);
+  };
+
   return (
-    <div className="game-grid-shell mx-auto w-full max-w-[560px] rounded-[28px] p-3">
+    <div className="game-grid-shell mx-auto w-full max-w-[560px] rounded-[28px] p-3 touch-none" style={{ touchAction: "none" }}>
       <div className="relative">
         {fxTick > 0 && (
           <div key={sparkleKey} className="pointer-events-none absolute inset-0 z-10 overflow-hidden rounded-[22px]">
@@ -84,80 +157,36 @@ export function GameBoard({ board, clearingSet, locked, onSwap, pendingSwap, fxT
           </div>
         )}
         <div className="grid grid-cols-8 gap-1.5 rounded-[22px]">
-      {board.flatMap((row, r) =>
-        row.map((tile, c) => {
-          const idx = r * GRID_SIZE + c;
-          const isSelected = selected?.row === r && selected?.col === c;
-          const isClearing = clearingSet.has(coordToKey(r, c));
-          const vector = pendingSwapVector(r, c);
-          const translateStyle =
-            vector !== null
-              ? { transform: `translate3d(${vector.x}%, ${vector.y}%, 0)` }
-              : undefined;
+          {board.flatMap((row, r) =>
+            row.map((tile, c) => {
+              const isSelected = selected?.row === r && selected?.col === c;
+              const isDragging = dragging?.row === r && dragging?.col === c;
+              const isClearing = clearingSet.has(coordToKey(r, c));
+              const vector = pendingSwapVector(r, c);
+              const translateStyle =
+                vector !== null ? { transform: `translate3d(${vector.x}%, ${vector.y}%, 0)` } : undefined;
 
-          return (
-            <button
-              key={`${r}-${c}`}
-              type="button"
-              style={translateStyle}
-              className={`tile-shell relative aspect-square w-full overflow-hidden rounded-full border border-white/30 transition-transform duration-150 ${
-                isSelected ? "tile-selected" : ""
-              } ${isClearing ? "tile-clearing" : ""} ${pendingSwap ? "tile-swapping" : ""}`}
-              onClick={() => onTileClick({ row: r, col: c })}
-              draggable={!locked}
-              onDragStart={() => {
-                dragFrom.current = idx;
-              }}
-              onDragOver={(event) => {
-                event.preventDefault();
-              }}
-              onDrop={(event) => {
-                event.preventDefault();
-                if (dragFrom.current === null) return;
-                const from = indexToCoord(dragFrom.current);
-                const to = indexToCoord(idx);
-                trySwap(from, to);
-                dragFrom.current = null;
-              }}
-              onTouchStart={(event) => {
-                const touch = event.changedTouches[0];
-                touchStart.current = { idx, x: touch.clientX, y: touch.clientY };
-              }}
-              onTouchEnd={(event) => {
-                const start = touchStart.current;
-                if (!start) return;
-                const touch = event.changedTouches[0];
-                const dx = touch.clientX - start.x;
-                const dy = touch.clientY - start.y;
-                const absX = Math.abs(dx);
-                const absY = Math.abs(dy);
-
-                if (Math.max(absX, absY) < 20) {
-                  onTileClick(indexToCoord(start.idx));
-                  touchStart.current = null;
-                  return;
-                }
-
-                const from = indexToCoord(start.idx);
-                const to = { ...from };
-                if (absX > absY) {
-                  to.col += dx > 0 ? 1 : -1;
-                } else {
-                  to.row += dy > 0 ? 1 : -1;
-                }
-
-                if (to.row >= 0 && to.row < GRID_SIZE && to.col >= 0 && to.col < GRID_SIZE) {
-                  trySwap(from, to);
-                }
-                touchStart.current = null;
-              }}
-            >
-              <span className="tile-gloss" />
-              <img src={TILE_ART[tile]} alt={`tile-${tile}`} className={`h-full w-full rounded-full object-cover ${dropPulse ? "tile-drop" : ""}`} />
-            </button>
-          );
-        }),
-      )}
+              return (
+                <button
+                  key={`${r}-${c}`}
+                  type="button"
+                  style={translateStyle}
+                  className={`tile-shell relative aspect-square w-full overflow-hidden rounded-full border border-white/30 transition-transform duration-150 ${
+                    isSelected ? "tile-selected" : ""
+                  } ${isClearing ? "tile-clearing" : ""} ${pendingSwap ? "tile-swapping" : ""} ${isDragging ? "tile-dragging" : ""}`}
+                  onPointerDown={(event) => {
+                    handlePointerDown({ row: r, col: c }, event.clientX, event.clientY);
+                  }}
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={handlePointerUp}
+                  onPointerCancel={handlePointerUp}
+                >
+                  <span className="tile-gloss" />
+                  <img src={TILE_ART[tile]} alt={`tile-${tile}`} className={`h-full w-full rounded-full object-cover ${dropPulse ? "tile-drop" : ""}`} />
+                </button>
+              );
+            }),
+          )}
         </div>
       </div>
     </div>

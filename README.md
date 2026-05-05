@@ -1,4 +1,4 @@
-# Solana Meme Match-3 (Vite)
+# FAT CAT Match-3 (Vite)
 
 A lightweight Solana-only meme-token match-3 game built with Vite + React + TypeScript + Tailwind.
 
@@ -12,7 +12,7 @@ A lightweight Solana-only meme-token match-3 game built with Vite + React + Type
 - Score + level + moves system
 - Daily check-in memo transaction
 - Score submission memo transaction
-- Local leaderboard, XP, and streak tracking
+- Supabase-backed leaderboard, XP, streaks, and check-in history
 - Responsive layout for desktop/tablet/mobile
 - Transaction states: loading, success, failed, rejected
 - Devnet/Mainnet RPC config from env
@@ -33,6 +33,8 @@ Copy `.env.example` to `.env.local` (or `.env`) and set:
 - `VITE_SOLANA_CLUSTER=devnet` or `mainnet-beta`
 - `VITE_SOLANA_RPC_URL=...`
 - `VITE_MEME_TOKEN_NAME=...`
+- `VITE_SUPABASE_URL=...`
+- `VITE_SUPABASE_ANON_KEY=...`
 
 ## Run
 
@@ -47,3 +49,10 @@ npm run dev
 npm run typecheck
 npm run build
 ```
+
+## Supabase setup
+
+1. Create a Supabase project.
+2. Run `supabase_schema.sql` in the SQL editor.
+3. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env.local`.
+4. Keep token rewards manual and reviewed (`scores.reviewed`, `scores.suspicious_score`).

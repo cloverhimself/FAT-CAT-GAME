@@ -82,6 +82,10 @@ alter table public.users enable row level security;
 alter table public.checkins enable row level security;
 alter table public.scores enable row level security;
 
+grant select, insert, update on table public.users to anon, authenticated;
+grant select, insert on table public.checkins to anon, authenticated;
+grant select, insert on table public.scores to anon, authenticated;
+
 -- Basic public policies for client-side app using anon key.
 -- For stronger protection in production, add authenticated wallet/session verification middleware.
 

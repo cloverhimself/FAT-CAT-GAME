@@ -22,7 +22,7 @@ export function SolanaAppProvider({ children }: { children: ReactNode }) {
 
   return (
     <ConnectionProviderCompat endpoint={SOLANA_RPC_URL} config={{ commitment: "confirmed" }}>
-      <WalletProviderCompat wallets={wallets}>
+      <WalletProviderCompat wallets={wallets} autoConnect>
         <WalletModalProviderCompat>{children}</WalletModalProviderCompat>
       </WalletProviderCompat>
     </ConnectionProviderCompat>

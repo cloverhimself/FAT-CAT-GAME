@@ -69,20 +69,27 @@ export async function ensureWalletSession(wallet: WalletContextState): Promise<v
   const signature = await wallet.signMessage(new TextEncoder().encode(challenge));
   const signatureBase64 = decodeSignature(signature);
 
-  const response = await fetch(getSupabaseFunctionUrl("wallet-auth"), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-    },
-    body: JSON.stringify({
-      walletAddress,
-      challenge,
-      signature: signatureBase64,
-      sessionTtlMs: SESSION_TTL_MS,
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(getSupabaseFunctionUrl("wallet-auth"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({
+        walletAddress,
+        challenge,
+        signature: signatureBase64,
+        sessionTtlMs: SESSION_TTL_MS,
+      }),
+    });
+  } catch (error) {
+    throw new Error(
+      `Could not reach Supabase wallet auth function. Deploy the 'wallet-auth' edge function and confirm your Supabase URL is correct. Original error: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 
   if (!response.ok) {
     const text = await response.text();

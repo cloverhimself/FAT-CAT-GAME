@@ -9,11 +9,13 @@ type Props = {
   onUsernameChange: (value: string) => void;
   onStart: () => void;
   canStart: boolean;
+  startLabel: string;
   rpcHealthy: boolean;
   feedback: string;
 };
 
 const MOBILE_UA_PATTERN = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
+const PHANTOM_APP_SCHEME_PREFIX = "phantom://ul/browse/";
 
 function isMobileDevice(): boolean {
   if (typeof navigator === "undefined") return false;
@@ -22,28 +24,60 @@ function isMobileDevice(): boolean {
   return MOBILE_UA_PATTERN.test(ua) || iPadOSDesktopUA;
 }
 
-function buildMobileWalletLinks(currentUrl: string, origin: string): Array<{ name: string; href: string }> {
+type MobileWalletLink = {
+  name: string;
+  universalLink: string;
+  appSchemeLink?: string;
+};
+
+function buildMobileWalletLinks(currentUrl: string, origin: string): MobileWalletLink[] {
   const encodedUrl = encodeURIComponent(currentUrl);
   const encodedRef = encodeURIComponent(origin);
 
   return [
     {
       name: "Phantom",
-      href: `https://phantom.app/ul/browse/${encodedUrl}?ref=${encodedRef}`,
+      universalLink: `https://phantom.app/ul/browse/${encodedUrl}?ref=${encodedRef}`,
+      appSchemeLink: `${PHANTOM_APP_SCHEME_PREFIX}${encodedUrl}?ref=${encodedRef}`,
     },
     {
       name: "Solflare",
-      href: `https://solflare.com/ul/v1/browse/${encodedUrl}?ref=${encodedRef}`,
+      universalLink: `https://solflare.com/ul/v1/browse/${encodedUrl}?ref=${encodedRef}`,
     },
   ];
 }
 
-export function OnboardingScreen({ username, onUsernameChange, onStart, canStart, rpcHealthy, feedback }: Props) {
+function openMobileWalletLink(link: MobileWalletLink): void {
+  if (typeof window === "undefined") return;
+
+  if (!link.appSchemeLink) {
+    window.location.href = link.universalLink;
+    return;
+  }
+
+  let hidden = false;
+  const onVisibilityChange = () => {
+    if (document.visibilityState === "hidden") hidden = true;
+  };
+
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  window.location.href = link.appSchemeLink;
+
+  window.setTimeout(() => {
+    document.removeEventListener("visibilitychange", onVisibilityChange);
+    if (!hidden) {
+      window.location.href = link.universalLink;
+    }
+  }, 900);
+}
+
+export function OnboardingScreen({ username, onUsernameChange, onStart, canStart, startLabel, rpcHealthy, feedback }: Props) {
   const { wallets, wallet, connected, connecting, select, connect } = useWallet();
   const [bannerSrc, setBannerSrc] = useState("/img/1500x1500.jpg");
-  const [mobileOpenLinks, setMobileOpenLinks] = useState<Array<{ name: string; href: string }>>([]);
+  const [mobileOpenLinks, setMobileOpenLinks] = useState<MobileWalletLink[]>([]);
   const mobile = useMemo(() => isMobileDevice(), []);
   const autoConnectAttemptRef = useRef<string | null>(null);
+  const [unsupportedMobileOrigin, setUnsupportedMobileOrigin] = useState(false);
 
   const mobileInstalledWallet = useMemo(() => {
     const installedWallets = wallets.filter((entry) => entry.readyState === WalletReadyState.Installed);
@@ -75,6 +109,11 @@ export function OnboardingScreen({ username, onUsernameChange, onStart, canStart
   useEffect(() => {
     if (!mobile || typeof window === "undefined") return;
     setMobileOpenLinks(buildMobileWalletLinks(window.location.href, window.location.origin));
+    const onSecureOrAllowedLocalhost =
+      window.location.protocol === "https:" ||
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+    setUnsupportedMobileOrigin(!onSecureOrAllowedLocalhost);
   }, [mobile]);
 
   useEffect(() => {
@@ -154,14 +193,20 @@ export function OnboardingScreen({ username, onUsernameChange, onStart, canStart
               <p className="rounded-lg border border-amber-300/35 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">
                 No wallet provider was detected in this mobile browser. Open this page in a wallet app browser to connect.
               </p>
+              {unsupportedMobileOrigin && (
+                <p className="rounded-lg border border-red-300/35 bg-red-400/10 px-3 py-2 text-xs text-red-100">
+                  This URL may not allow wallet injection on mobile (Phantom injects on HTTPS, localhost, or 127.0.0.1).
+                </p>
+              )}
               {mobileOpenLinks.map((item) => (
-                <a
+                <button
                   key={item.name}
-                  href={item.href}
+                  type="button"
+                  onClick={() => openMobileWalletLink(item)}
                   className="rounded-xl bg-gradient-to-r from-[#ffe3ef] to-[#fff6df] px-4 py-3 text-center text-sm font-bold text-[#ef3f87] shadow-md transition hover:brightness-105"
                 >
                   Open in {item.name}
-                </a>
+                </button>
               ))}
             </div>
           )
@@ -181,7 +226,7 @@ export function OnboardingScreen({ username, onUsernameChange, onStart, canStart
         onClick={onStart}
         className="rounded-xl bg-gradient-to-r from-[#ffe3ef] to-[#fff6df] px-5 py-3 text-sm font-bold uppercase tracking-[0.14em] text-[#ef3f87] shadow-md transition hover:brightness-105 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
       >
-        Start Game
+        {startLabel}
       </button>
 
       {feedback && <p className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/85">{feedback}</p>}

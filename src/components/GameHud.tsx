@@ -13,8 +13,10 @@ type Props = {
   onCheckIn: () => void;
   onSubmitScore: () => void;
   canCheckIn: boolean;
+  canSubmitScore: boolean;
   checkInBusy: boolean;
   submitBusy: boolean;
+  walletMode: boolean;
   outOfMoves: boolean;
   onTryAgain: () => void;
 };
@@ -32,8 +34,10 @@ function GameHudImpl({
   onCheckIn,
   onSubmitScore,
   canCheckIn,
+  canSubmitScore,
   checkInBusy,
   submitBusy,
+  walletMode,
   outOfMoves,
   onTryAgain,
 }: Props) {
@@ -64,10 +68,10 @@ function GameHudImpl({
         <button
           type="button"
           onClick={onSubmitScore}
-          disabled={submitBusy}
+          disabled={!canSubmitScore || submitBusy}
           className="rounded-lg bg-gradient-to-r from-[#ffd27a] to-[#ffe6a8] px-4 py-2.5 text-xs font-bold uppercase tracking-[0.12em] text-[#8a2e2b] shadow-sm transition hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-45"
         >
-          {submitBusy ? "Saving..." : "Save Score"}
+          {submitBusy ? "Saving..." : canSubmitScore ? "Save Score" : "Guest Mode"}
         </button>
       </div>
 
@@ -81,7 +85,11 @@ function GameHudImpl({
           Try Again
         </button>
       )}
-      <p className="text-xs text-white/60">Rewards are manual only. No token distributions are automated in-app.</p>
+      <p className="text-xs text-white/60">
+        {walletMode
+          ? "Rewards are manual only. No token distributions are automated in-app."
+          : "Guest mode: wallet check-in and score save are disabled until you connect a wallet."}
+      </p>
     </section>
   );
 }

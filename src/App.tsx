@@ -88,6 +88,8 @@ type LevelUpState = {
   nextLevel: number;
 };
 
+type GameSessionMode = "wallet" | "guest";
+
 function AppShell() {
   const { connection } = useConnection();
   const wallet = useWallet();
@@ -96,6 +98,7 @@ function AppShell() {
   const [usernameInput, setUsernameInput] = useState("");
   const [username, setUsername] = useState("");
   const [started, setStarted] = useState(false);
+  const [sessionMode, setSessionMode] = useState<GameSessionMode>("guest");
 
   const [board, setBoard] = useState<number[][]>(() => createBoard(1));
   const [clearingSet, setClearingSet] = useState<Set<string>>(new Set());
@@ -257,8 +260,9 @@ function AppShell() {
     void runRpcHealthCheck();
   }, [runRpcHealthCheck, wallet.connected]);
 
-  const canStart = wallet.connected && usernameInput.trim().length >= 3 && hasSupabaseEnv;
-  const canCheckIn = !!progress && !isSameDay(progress.lastCheckInDay) && checkInState !== "loading";
+  const canStart = usernameInput.trim().length >= 3;
+  const canCheckIn = sessionMode === "wallet" && !!progress && !isSameDay(progress.lastCheckInDay) && checkInState !== "loading";
+  const canSubmitScore = sessionMode === "wallet" && !!wallet.publicKey && !!progress && hasSupabaseEnv;
   const boardLocked = isResolving || levelFailed || pendingSwap !== null || levelUpState !== null;
 
   const resetRunForLevel = (nextLevel: number) => {
@@ -270,17 +274,43 @@ function AppShell() {
     setLevelFailed(false);
   };
 
+  const beginRun = async (displayName: string, nextFeedback: string) => {
+    setUsername(displayName);
+    setScore(0);
+    resetRunForLevel(1);
+    setSessionMeta({ id: crypto.randomUUID(), startedAt: Date.now(), endedAt: null, movesUsed: 0 });
+    setStarted(true);
+    setCheckInState("idle");
+    setSubmitState("idle");
+    setPendingSwap(null);
+    setScorePop(null);
+    setFeedback(nextFeedback);
+    sound.playCheckInSuccess();
+    const startedMusic = await sound.startMusic();
+    setMusicPlaying(startedMusic);
+  };
+
   const startGame = async () => {
     sound.unlock();
-    if (!wallet.publicKey || !canStart) return;
-    if (!hasSupabaseEnv) {
-      setFeedback("Supabase is required before starting. Configure .env.local and restart.");
-      return;
-    }
+    if (!canStart) return;
 
     const clean = sanitizeUsername(usernameInput.trim());
     if (clean.length < 3) {
       setFeedback("Username must be at least 3 valid characters.");
+      return;
+    }
+
+    if (!wallet.connected || !wallet.publicKey) {
+      setSessionMode("guest");
+      setProgress(null);
+      await beginRun(clean, "Guest mode active. Connect wallet to enable check-ins and score saves.");
+      return;
+    }
+
+    if (!hasSupabaseEnv) {
+      setSessionMode("guest");
+      setProgress(null);
+      await beginRun(clean, "Supabase env missing. Started in guest mode; wallet-linked saving is disabled.");
       return;
     }
 
@@ -298,22 +328,13 @@ function AppShell() {
 
     try {
       const nextProgress = await upsertUser({ wallet: walletKey, username: clean, progress: base });
+      setSessionMode("wallet");
       setProgress(nextProgress);
-      setUsername(clean);
-      setScore(0);
-      resetRunForLevel(1);
-      setSessionMeta({ id: crypto.randomUUID(), startedAt: Date.now(), endedAt: null, movesUsed: 0 });
-      setStarted(true);
-      setSubmitState("idle");
-      setPendingSwap(null);
-      setScorePop(null);
-      setFeedback("");
-      sound.playCheckInSuccess();
-      const startedMusic = await sound.startMusic();
-      setMusicPlaying(startedMusic);
+      await beginRun(clean, "");
     } catch (error) {
-      sound.playGameOver();
-      setFeedback(toErrorMessage(error));
+      setSessionMode("guest");
+      setProgress(null);
+      await beginRun(clean, `Wallet sync failed. Started in guest mode. (${toErrorMessage(error)})`);
     }
   };
 
@@ -446,6 +467,10 @@ function AppShell() {
 
   const handleCheckIn = async () => {
     sound.unlock();
+    if (sessionMode !== "wallet") {
+      setFeedback("Guest mode active. Connect wallet to use daily check-in.");
+      return;
+    }
     if (!wallet.publicKey || !progress || !hasSupabaseEnv) return;
     const walletKey = wallet.publicKey.toBase58();
     const cleanUsername = sanitizeUsername(progress.username || username || usernameInput);
@@ -503,6 +528,10 @@ function AppShell() {
 
   const handleScoreSubmit = async () => {
     sound.unlock();
+    if (sessionMode !== "wallet") {
+      setFeedback("Guest mode active. Connect wallet to save scores.");
+      return;
+    }
     if (!wallet.publicKey || !progress || !hasSupabaseEnv) return;
     const walletKey = wallet.publicKey.toBase58();
     const cleanUsername = sanitizeUsername(progress.username || username || usernameInput);
@@ -714,6 +743,7 @@ function AppShell() {
           onUsernameChange={(value) => setUsernameInput(sanitizeUsername(value))}
           onStart={() => void startGame()}
           canStart={canStart}
+          startLabel={wallet.connected && hasSupabaseEnv ? "Start with Wallet" : "Play as Guest"}
           rpcHealthy={rpcHealthy}
           feedback={feedback}
         />
@@ -724,17 +754,19 @@ function AppShell() {
               username={username}
               score={score}
               level={level}
-              streak={progress?.streak ?? 0}
-              totalXP={progress?.totalXP ?? 0}
-              totalCheckIns={progress?.totalCheckIns ?? 0}
+              streak={sessionMode === "wallet" ? progress?.streak ?? 0 : 0}
+              totalXP={sessionMode === "wallet" ? progress?.totalXP ?? 0 : 0}
+              totalCheckIns={sessionMode === "wallet" ? progress?.totalCheckIns ?? 0 : 0}
               movesRemaining={movesRemaining}
               levelScore={levelScore}
               targetScore={targetScore}
               onCheckIn={handleCheckIn}
               onSubmitScore={handleScoreSubmit}
               canCheckIn={canCheckIn}
+              canSubmitScore={canSubmitScore}
               checkInBusy={checkInState === "loading"}
               submitBusy={submitState === "loading"}
+              walletMode={sessionMode === "wallet"}
               outOfMoves={levelFailed}
               onTryAgain={handleTryAgain}
             />

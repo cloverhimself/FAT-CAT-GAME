@@ -29,7 +29,7 @@ export function WalletStatusBanner({
   lastSignature,
 }: Props) {
   return (
-    <div className="grid gap-2 rounded-2xl border border-white/10 bg-panel/80 p-4 text-sm text-white/80">
+    <div className="glass-panel grid gap-2 rounded-2xl p-4 text-sm text-white/85">
       <p>Wallet: {walletConnecting ? "Connecting..." : walletConnected ? "Connected" : "Disconnected"}</p>
       <p>RPC: {rpcHealthy ? "Healthy" : `Issue: ${rpcReason ?? "unknown"}`}</p>
       <p>Check-in: {txLabel[checkInState]}</p>

@@ -31,10 +31,10 @@ export function LeaderboardPanel({ entries }: Props) {
   }, [entries, mode]);
 
   return (
-    <section className="grid gap-3 rounded-2xl border border-white/10 bg-panel/85 p-4">
+    <section className="glass-panel grid gap-3 rounded-2xl p-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold text-white">Leaderboard</h2>
-        <div className="flex gap-1 rounded-lg bg-black/25 p-1 text-xs">
+        <div className="flex gap-1 rounded-lg bg-white/15 p-1 text-xs backdrop-blur">
           {(Object.keys(modeLabel) as Mode[]).map((key) => (
             <button
               key={key}
@@ -50,7 +50,7 @@ export function LeaderboardPanel({ entries }: Props) {
 
       <div className="space-y-2">
         {sorted.slice(0, 10).map((entry, idx) => (
-          <div key={entry.id} className="grid grid-cols-[32px,1fr,auto] items-center gap-2 rounded-lg bg-black/20 p-2 text-sm">
+          <div key={entry.id} className="grid grid-cols-[32px,1fr,auto] items-center gap-2 rounded-lg bg-white/10 p-2 text-sm backdrop-blur">
             <span className="text-white/60">#{idx + 1}</span>
             <div className="truncate">
               <p className="truncate font-semibold text-white">{entry.username}</p>

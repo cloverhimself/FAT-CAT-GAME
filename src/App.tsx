@@ -66,6 +66,9 @@ function AppShell() {
   const [board, setBoard] = useState<number[][]>(() => createBoard());
   const [clearingSet, setClearingSet] = useState<Set<string>>(new Set());
   const [isResolving, setIsResolving] = useState(false);
+  const [pendingSwap, setPendingSwap] = useState<{ a: Coord; b: Coord } | null>(null);
+  const [matchFxTick, setMatchFxTick] = useState(0);
+  const [scorePop, setScorePop] = useState<{ id: number; text: string } | null>(null);
 
   const [score, setScore] = useState(0);
   const [level, setLevel] = useState(1);
@@ -118,7 +121,7 @@ function AppShell() {
 
   const canStart = wallet.connected && usernameInput.trim().length >= 3 && rpcHealthy;
   const canCheckIn = !!progress && !isSameDay(progress.lastCheckInDay) && checkInState !== "loading";
-  const boardLocked = isResolving || movesRemaining <= 0;
+  const boardLocked = isResolving || movesRemaining <= 0 || pendingSwap !== null;
 
   const startGame = () => {
     if (!wallet.publicKey || !canStart) return;
@@ -153,6 +156,8 @@ function AppShell() {
     setSessionId(crypto.randomUUID());
     setStarted(true);
     setSubmitState("idle");
+    setPendingSwap(null);
+    setScorePop(null);
     setFeedback("");
   };
 
@@ -178,6 +183,13 @@ function AppShell() {
 
     if (totalMatched > 0) {
       const gained = scoreForMatch(totalMatched, cascadeSteps);
+      const popId = Date.now();
+      setMatchFxTick((prev) => prev + 1);
+      setScorePop({ id: popId, text: `+${gained}` });
+      setTimeout(() => {
+        setScorePop((current) => (current && current.id === popId ? null : current));
+      }, 900);
+
       setScore((prev) => {
         const updated = Math.min(prev + gained, MAX_SCORE);
         const nextLevel = Math.floor(updated / 500) + 1;
@@ -195,8 +207,11 @@ function AppShell() {
     if (!canSwap(board, a, b)) return;
 
     setMovesRemaining((prev) => Math.max(0, prev - 1));
+    setPendingSwap({ a, b });
+    await delay(130);
     const swapped = swapTiles(board, a, b);
     setBoard(swapped);
+    setPendingSwap(null);
     setIsResolving(true);
 
     try {
@@ -318,13 +333,13 @@ function AppShell() {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 p-4 pb-10 sm:p-6">
-      <header className="rounded-2xl border border-white/10 bg-panel/75 p-4">
+      <header className="glass-panel rounded-3xl p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h1 className="text-3xl font-black text-white">Solana Meme Match-3</h1>
             <p className="text-xs uppercase tracking-[0.16em] text-accent2">Network: {getNetworkLabel()}</p>
           </div>
-          <p className="rounded-full border border-accent/40 bg-accent/10 px-3 py-1 text-xs text-neon">Badge: {badge}</p>
+          <p className="rounded-full border border-white/35 bg-white/15 px-3 py-1 text-xs text-white">Badge: {badge}</p>
         </div>
         <p className="mt-2 text-xs text-white/65">This app never moves user funds. Transactions only store memo records for check-ins and score submissions.</p>
       </header>
@@ -366,7 +381,21 @@ function AppShell() {
               outOfMoves={movesRemaining <= 0}
             />
 
-            <GameBoard board={board} clearingSet={clearingSet} locked={boardLocked} onSwap={handleSwap} />
+            <div className="relative">
+              {scorePop && (
+                <div key={scorePop.id} className="score-pop pointer-events-none absolute left-1/2 top-2 z-20 -translate-x-1/2 rounded-full bg-white/20 px-3 py-1 text-sm font-bold text-white backdrop-blur">
+                  {scorePop.text}
+                </div>
+              )}
+              <GameBoard
+                board={board}
+                clearingSet={clearingSet}
+                locked={boardLocked}
+                onSwap={handleSwap}
+                pendingSwap={pendingSwap}
+                fxTick={matchFxTick}
+              />
+            </div>
             {feedback && <p className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/85">{feedback}</p>}
           </div>
 
